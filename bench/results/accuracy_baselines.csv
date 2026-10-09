@@ -1,0 +1,7 @@
+model,split,n,acc,acc_noun,acc_verb,acc_other,acc_seen,acc_unseen
+identity,dev,668,0.2695,0.3788,0.0000,0.3729,0.1657,0.3063
+identity,test,692,0.2673,0.3857,0.0000,0.3913,0.1714,0.2998
+identity,test_unseen,517,0.2998,0.4218,0.0000,0.4239,,0.2998
+suffix_stripper,dev,668,0.4012,0.6017,0.0471,0.3644,0.3086,0.4341
+suffix_stripper,test,692,0.3873,0.5923,0.0654,0.3391,0.3029,0.4159
+suffix_stripper,test_unseen,517,0.4159,0.6218,0.0733,0.3587,,0.4159

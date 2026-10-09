@@ -1,0 +1,17 @@
+# M1 skeleton: small LSTM seq2seq on UD Tamil.
+name: lstm_tiny
+model:
+  type: lstm_seq2seq
+  emb: 64
+  hidden: 128
+  layers: 1
+  dropout: 0.2
+data:
+  tokenizer: codepoint
+  max_len: 48
+train:
+  epochs: 80
+  batch_size: 32
+  lr: 0.002
+  patience: 12
+  seed: 13

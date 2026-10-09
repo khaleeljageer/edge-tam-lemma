@@ -1,0 +1,20 @@
+# M1 skeleton: small edit-tree classifier on UD Tamil.
+name: edit_tiny
+model:
+  type: edit_classifier
+  emb: 64
+  channels: 128
+  layers: 3
+  kernel: 3
+  dropout: 0.2
+data:
+  tokenizer: codepoint
+  max_len: 48
+train:
+  epochs: 80
+  batch_size: 32
+  lr: 0.002
+  patience: 12
+  seed: 13
+edit:
+  top_k: null

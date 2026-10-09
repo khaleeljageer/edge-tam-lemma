@@ -1,0 +1,68 @@
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Data -----------------------------------------------------------------
+# Raw downloads and intermediate candidates are re-created by scripts/data/.
+# data/processed/ (final splits) stays tracked so every result is reproducible.
+data/raw/
+data/interim/
+# Unannotated news text: usage rights not yet confirmed, keep out of git.
+data/news/
+
+# --- Experiments and models -------------------------------------------------
+# Training runs (checkpoints, per-run metrics) are re-created from configs/.
+runs/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.ort
+*.tflite
+*.pte
+*.log
+wandb/
+mlruns/
+lightning_logs/
+
+# Benchmark scratch output; final CSVs in bench/results/ stay tracked.
+bench/tmp/
+bench/results/*.partial.csv
+
+# --- Paper (LaTeX build artifacts) -----------------------------------------
+paper/**/*.aux
+paper/**/*.bbl
+paper/**/*.blg
+paper/**/*.fdb_latexmk
+paper/**/*.fls
+paper/**/*.out
+paper/**/*.synctex.gz
+paper/**/*.toc
+paper/main.pdf
+
+# --- Secrets and local config -----------------------------------------------
+.env
+.env.*
+*.local.yaml
+
+# --- Editors and OS -----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# --- Claude Code local settings -----------------------------------------------
+.claude/settings.local.json

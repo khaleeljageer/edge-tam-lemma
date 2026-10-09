@@ -1,0 +1,1 @@
+"""Tamil edge lemmatizer."""
