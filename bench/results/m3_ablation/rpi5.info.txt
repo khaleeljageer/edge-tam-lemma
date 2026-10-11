@@ -1,0 +1,21 @@
+## rpiasuran
+Architecture:                            aarch64
+CPU(s):                                  4
+Model name:                              Cortex-A76
+Thread(s) per core:                      1
+Core(s) per cluster:                     4
+CPU(s) scaling MHz:                      100%
+CPU max MHz:                             2400.0000
+Model		: Raspberry Pi 5 Model B Rev 1.1
+               total        used        free      shared  buff/cache   available
+Mem:            8062         589        6703          34         880        7472
+PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+Linux 6.18.50+rpt-rpi-2712 aarch64
+governor: performance
+temp=34.0'C
+throttled=0x0
+Python 3.13.5
+numpy 2.5.3
+onnxruntime 1.31.0
+ncnn 1.0.20260526
+ai-edge-litert 2.3.0

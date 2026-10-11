@@ -1,0 +1,11 @@
+{
+ "teacher": "teacher_lstm",
+ "mode": "gold+teacher",
+ "min_token_prob": 0.9,
+ "gold": 3153,
+ "extra_candidates": 20000,
+ "extra_kept": 9012,
+ "extra_dropped_low_confidence": 10423,
+ "extra_dropped_heldout_lemma": 565,
+ "total": 12165
+}

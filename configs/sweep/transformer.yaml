@@ -1,0 +1,19 @@
+# M3 sweep base: character transformer (pre-norm). Size and seed are set by tel.sweep.
+# Small-data settings: 2 layers, high dropout, warmup, label smoothing.
+name: transformer
+model:
+  type: transformer
+  heads: 4
+  layers: 2
+  ff_mult: 4
+  dropout: 0.3
+data:
+  tokenizer: codepoint
+  max_len: 48
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.001
+  patience: 25
+  label_smoothing: 0.1
+  warmup_steps: 500

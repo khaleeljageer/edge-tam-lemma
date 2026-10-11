@@ -6,9 +6,9 @@ from collections.abc import Sequence
 
 import torch
 
+from tel.decoding import beam_decode, greedy_decode
 from tel.edit_tree import ScriptVocab
 from tel.models.edit_classifier import EditClassifier
-from tel.models.lstm_seq2seq import LSTMSeq2Seq
 from tel.tokenizer import PAD_ID, CharTokenizer
 
 
@@ -26,18 +26,30 @@ def encode_batch(
 
 
 class Seq2SeqLemmatizer:
+    """Any model implementing the `tel.decoding` interface (LSTM, transformer)."""
+
     def __init__(
-        self, model: LSTMSeq2Seq, tok: CharTokenizer, max_len: int, batch_size: int = 256
+        self, model, tok: CharTokenizer, max_len: int, batch_size: int = 256,
+        beam: int = 1, alpha: float = 0.0,
     ) -> None:
         self.model, self.tok, self.max_len, self.batch_size = model, tok, max_len, batch_size
+        self.beam, self.alpha = beam, alpha
 
     def lemmatize(self, words: list[str]) -> list[str]:
+        return [hyps[0][0] for hyps in self.nbest(words, n=1)]
+
+    def nbest(self, words: list[str], n: int | None = None) -> list[list[tuple[str, float]]]:
+        """Per word, up to n (lemma, logprob) candidates, best first. Greedy gives 1."""
         self.model.eval()
-        out: list[str] = []
+        out: list[list[tuple[str, float]]] = []
         for i in range(0, len(words), self.batch_size):
             src, mask = encode_batch(self.tok, words[i : i + self.batch_size], self.max_len)
-            ids = self.model.greedy(src, mask, self.max_len)
-            out.extend(self.tok.decode(row.tolist()) for row in ids)
+            if self.beam <= 1:
+                ids = greedy_decode(self.model, src, mask, self.max_len)
+                out.extend([(self.tok.decode(row.tolist()), 0.0)] for row in ids)
+                continue
+            for hyps in beam_decode(self.model, src, mask, self.max_len, self.beam, self.alpha):
+                out.append([(self.tok.decode(h.tokens), h.logprob) for h in hyps[:n]])
         return out
 
 

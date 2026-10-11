@@ -1,0 +1,25 @@
+# External baselines (research plan section 4.1). Used only as black-box
+# dependencies; no code from these projects is copied into this repo.
+#   uv run --project envs/baselines python scripts/baselines/run_stanza.py
+[project]
+name = "tel-env-baselines"
+version = "0"
+requires-python = ">=3.11"
+dependencies = [
+    "tel",
+    "stanza==1.15.0",
+    "tamil-lemmatizer==0.0.2",
+    "torch==2.14.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+tel = { path = "../..", editable = true }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

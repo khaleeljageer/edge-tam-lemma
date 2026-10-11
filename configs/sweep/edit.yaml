@@ -1,0 +1,18 @@
+# M3 sweep base: edit-tree classifier (char CNN encoder -> edit-script class).
+name: edit
+model:
+  type: edit_classifier
+  emb: 64
+  layers: 3
+  kernel: 3
+  dropout: 0.2
+data:
+  tokenizer: codepoint
+  max_len: 48
+train:
+  epochs: 80
+  batch_size: 32
+  lr: 0.002
+  patience: 12
+edit:
+  top_k: null

@@ -85,6 +85,10 @@ class ScriptVocab:
         self.itos: list[EditScript] = [IDENTITY]
         self.itos += [s for s in dict.fromkeys(scripts) if s != IDENTITY]
         self.stoi: dict[EditScript, int] = {s: i for i, s in enumerate(self.itos)}
+        # Index by removed suffix so a word only checks scripts that could apply.
+        self._by_suffix: dict[str, list[tuple[int, EditScript]]] = {}
+        for i, s in enumerate(self.itos):
+            self._by_suffix.setdefault(s.suf_del, []).append((i, s))
 
     @classmethod
     def build(
@@ -101,8 +105,20 @@ class ScriptVocab:
         """Class id of a script; scripts outside the vocab map to identity (0)."""
         return self.stoi.get(script, 0)
 
+    def applicable_ids(self, word: str) -> list[int]:
+        """Class ids of the scripts that apply to `word` (always includes 0, identity)."""
+        ids = []
+        for k in range(len(word) + 1):
+            for i, s in self._by_suffix.get(word[len(word) - k :], ()):
+                if s.applies(word):
+                    ids.append(i)
+        return sorted(ids)
+
     def applicable_mask(self, word: str) -> list[bool]:
-        return [s.applies(word) for s in self.itos]
+        mask = [False] * len(self.itos)
+        for i in self.applicable_ids(word):
+            mask[i] = True
+        return mask
 
     def coverage(self, pairs: Iterable[tuple[str, str]]) -> float:
         """Fraction of pairs whose gold script is in the vocab (or is identity)."""

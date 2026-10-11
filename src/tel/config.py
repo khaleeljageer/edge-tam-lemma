@@ -11,12 +11,15 @@ import yaml
 
 @dataclass
 class ModelConfig:
-    type: str = "lstm_seq2seq"  # lstm_seq2seq | edit_classifier
+    type: str = "lstm_seq2seq"  # lstm_seq2seq | char_cnn | transformer | edit_classifier
     emb: int = 64
-    hidden: int = 128  # lstm_seq2seq
+    hidden: int = 128  # lstm_seq2seq hidden size; transformer d_model
     layers: int = 1
     channels: int = 128  # edit_classifier
-    kernel: int = 3  # edit_classifier
+    kernel: int = 3  # edit_classifier, char_cnn
+    conv_layers: int = 4  # char_cnn: dilated conv blocks in the encoder
+    heads: int = 4  # transformer
+    ff_mult: int = 4  # transformer: feed-forward width = ff_mult * d_model
     dropout: float = 0.1
     # If set, `hidden` / `channels` is chosen to get as close as possible below this.
     target_params: int | None = None
@@ -28,6 +31,9 @@ class DataConfig:
     tokenizer: str = "codepoint"  # codepoint | grapheme
     max_len: int = 48
     max_train: int | None = None  # cap on train pairs (smoke tests)
+    # Alternative training file (e.g. distilled data from tel.distill); dev/test and the
+    # gold train lemmas used for seen/unseen scoring still come from `dir`.
+    train_file: str | None = None
 
 
 @dataclass
@@ -38,6 +44,14 @@ class TrainConfig:
     weight_decay: float = 0.01
     patience: int = 10
     seed: int = 13
+    label_smoothing: float = 0.0  # seq2seq cross-entropy
+    warmup_steps: int = 0  # linear LR warmup over this many optimizer steps
+
+
+@dataclass
+class DecodeConfig:
+    beam: int = 1  # final evaluation; dev selection during training is always greedy
+    alpha: float = 0.0  # length normalization: score = logprob / (len + 1) ** alpha
 
 
 @dataclass
@@ -52,6 +66,7 @@ class Config:
     data: DataConfig = field(default_factory=DataConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     edit: EditConfig = field(default_factory=EditConfig)
+    decode: DecodeConfig = field(default_factory=DecodeConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -68,7 +83,8 @@ def _build(cls: type, values: dict[str, Any] | None, where: str) -> Any:
 
 def config_from_dict(d: dict[str, Any]) -> Config:
     d = dict(d)
-    sections = {"model": ModelConfig, "data": DataConfig, "train": TrainConfig, "edit": EditConfig}
+    sections = {"model": ModelConfig, "data": DataConfig, "train": TrainConfig,
+                "edit": EditConfig, "decode": DecodeConfig}
     unknown = set(d) - set(sections) - {"name"}
     if unknown:
         raise ValueError(f"unknown top-level keys: {sorted(unknown)}")

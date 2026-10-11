@@ -7,6 +7,13 @@ from collections.abc import Callable
 import torch
 from torch import nn
 
+# Additive mask for padded positions: x + (mask - 1) * MASK_NEG. Must stay inside
+# the fp16 range (max 65504): with 1e9 the constant becomes inf in fp16 graphs and
+# 0 * inf = NaN at every real position (seen with ncnn fp16 on Cortex-A76).
+# 1e4 is still far below any real activation, so fp32 results are unchanged.
+MASK_NEG = 1e4
+FP16_MAX = 65504.0
+
 
 def count_params(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters())

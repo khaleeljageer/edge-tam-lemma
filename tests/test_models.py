@@ -66,3 +66,56 @@ def test_lemmatizers_keep_length_and_handle_unknown_chars():
     edit = EditLemmatizer(EditClassifier(len(tok), len(vocab)), tok, vocab, 48)
     assert len(s2s.lemmatize(words)) == 3
     assert len(edit.lemmatize(words)) == 3
+
+
+def test_reversal_matrix():
+    from tel.models.lstm_seq2seq import reversal_matrix
+
+    x = torch.arange(10.0).view(2, 5, 1)
+    mask = torch.tensor([[1, 1, 1, 0, 0], [1, 1, 1, 1, 1]], dtype=torch.float)
+    p = reversal_matrix(mask)
+    r = torch.matmul(p, x)
+    assert r[0, :, 0].tolist() == [2, 1, 0, 3, 4]
+    assert r[1, :, 0].tolist() == [9, 8, 7, 6, 5]
+    assert torch.equal(torch.matmul(p, r), x)
+
+
+@pytest.mark.parametrize("model_type", ["lstm", "edit"])
+def test_output_does_not_depend_on_padding(model_type):
+    torch.manual_seed(0)
+    if model_type == "lstm":
+        model = LSTMSeq2Seq(30, emb=16, hidden=32, layers=2).eval()
+    else:
+        model = EditClassifier(30, 10, emb=16, channels=32).eval()
+    src = torch.tensor([[5, 6, 7, 8, 9]])
+    padded = torch.cat([src, torch.zeros(1, 20, dtype=torch.long)], 1)
+    with torch.no_grad():
+        if model_type == "lstm":
+            a, _ = model.encode(src, src != 0)
+            b, _ = model.encode(padded, padded != 0)
+            torch.testing.assert_close(a, b[:, :5])
+        else:
+            torch.testing.assert_close(model(src, src != 0), model(padded, padded != 0))
+
+
+def test_char_cnn_padding_invariance_and_overfit():
+    torch.manual_seed(0)
+    model = LSTMSeq2Seq(30, emb=16, hidden=32, layers=1, encoder="cnn").eval()
+    assert not model.needs_perm
+    src = torch.tensor([[5, 6, 7, 8, 9]])
+    padded = torch.cat([src, torch.zeros(1, 20, dtype=torch.long)], 1)
+    with torch.no_grad():
+        a, _ = model.encode(src, src != 0)
+        b, _ = model.encode(padded, padded != 0)
+    torch.testing.assert_close(a, b[:, :5])
+
+    tok = CharTokenizer.build(w for p in PAIRS for w in p)
+    cnn = LSTMSeq2Seq(len(tok), emb=32, hidden=64, dropout=0.0, encoder="cnn")
+    assert _overfit(cnn, Task(tok, 48)) == [lem for _, lem in PAIRS]
+
+
+def test_char_cnn_width_hits_param_target():
+    def make(h):
+        return LSTMSeq2Seq(80, emb=64, hidden=h, layers=1, encoder="cnn")
+    params = count_params(make(width_for_params(make, 1_000_000)))
+    assert 0.9 * 1_000_000 <= params <= 1_000_000

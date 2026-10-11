@@ -11,10 +11,20 @@ dependencies = [
 ]
 
 [dependency-groups]
+export = [
+    "onnx>=1.17",
+    "onnxruntime>=1.20",
+    "onnxscript>=0.2",
+    "pnnx>=20260526",
+    "ncnn>=1.0.20260526",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+
+[tool.uv]
+default-groups = ["dev", "export"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }

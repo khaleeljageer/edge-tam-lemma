@@ -1,0 +1,22 @@
+# M2 teacher: large character BiLSTM + attention, beam search at evaluation
+# (research plan section 4.2: embed 256, hidden 512).
+name: teacher_lstm
+model:
+  type: lstm_seq2seq
+  emb: 256
+  hidden: 512
+  layers: 2
+  dropout: 0.3
+data:
+  tokenizer: codepoint
+  max_len: 48
+train:
+  epochs: 100
+  batch_size: 32
+  lr: 0.001
+  patience: 15
+  seed: 13
+  label_smoothing: 0.1
+decode:
+  beam: 4
+  alpha: 0.0

@@ -9,6 +9,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
+from tel.models.common import MASK_NEG
 from tel.tokenizer import PAD_ID
 
 
@@ -30,16 +31,24 @@ class EditClassifier(nn.Module):
         self.head = nn.Linear(2 * channels, n_classes)
 
     def forward(self, src: torch.Tensor, src_mask: torch.Tensor) -> torch.Tensor:
-        """src (B, S), src_mask (B, S) -> class logits (B, C)."""
+        """src (B, S), src_mask (B, S) bool -> class logits (B, C)."""
+        mask = src_mask.to(self.rpos.weight.dtype)
         lengths = src_mask.sum(1, keepdim=True)
-        rpos = (lengths - 1 - torch.arange(src.size(1), device=src.device)[None, :])
-        rpos = rpos.clamp(0, self.max_len - 1)
+        rpos = lengths - 1 - torch.arange(src.size(1), device=src.device)[None, :]
+        return self.forward_features(src, mask, rpos.clamp(0, self.max_len - 1))
+
+    def forward_features(
+        self, src: torch.Tensor, mask: torch.Tensor, rpos: torch.Tensor
+    ) -> torch.Tensor:
+        """Exported graph. src (B, S), mask (B, S) float 0/1, rpos (B, S) positions
+        counted from the word end -> logits (B, C). Masks are applied
+        arithmetically so the graph converts to every runtime, including ncnn."""
         x = self.drop(self.emb(src) + self.rpos(rpos))
-        m = src_mask[:, None, :].to(x.dtype)  # (B, 1, S)
+        m = mask.unsqueeze(1)  # (B, 1, S)
         h = self.inp(x.transpose(1, 2)) * m
         for conv, norm in zip(self.convs, self.norms, strict=True):
             r = torch.relu(conv(self.drop(h)))
             h = norm((h + r).transpose(1, 2)).transpose(1, 2) * m
-        h_max = h.masked_fill(m == 0, -1e9).amax(-1)
-        h_mean = h.sum(-1) / m.sum(-1).clamp(min=1)
+        h_max = (h + (m - 1.0) * MASK_NEG).amax(-1)
+        h_mean = h.sum(-1) / m.sum(-1).clamp(min=1.0)
         return self.head(self.drop(torch.cat([h_max, h_mean], -1)))

@@ -1,0 +1,23 @@
+# Export / run models with ExecuTorch. Separate env: ExecuTorch needs a matching torch.
+#   uv run --project envs/executorch python -m tel.export runs/<name> --runtime executorch
+[project]
+name = "tel-env-executorch"
+version = "0"
+requires-python = ">=3.11"
+dependencies = [
+    "tel",
+    "executorch==1.5.1",
+    "torch==2.14.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+tel = { path = "../..", editable = true }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

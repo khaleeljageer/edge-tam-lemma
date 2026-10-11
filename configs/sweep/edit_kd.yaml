@@ -1,0 +1,20 @@
+# M3 distillation: edit.yaml trained on teacher_lstm-labelled data (gold train +
+# 9,012 Wikipedia words, per-token prob >= 0.9; see tel.distill). Compare with edit_<size>.
+name: edit_kd
+model:
+  type: edit_classifier
+  emb: 64
+  layers: 3
+  kernel: 3
+  dropout: 0.2
+data:
+  tokenizer: codepoint
+  max_len: 48
+  train_file: data/distill/teacher_lstm_wiki20k/train.tsv
+train:
+  epochs: 80
+  batch_size: 32
+  lr: 0.002
+  patience: 12
+edit:
+  top_k: null

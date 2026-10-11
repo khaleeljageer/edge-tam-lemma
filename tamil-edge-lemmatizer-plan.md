@@ -71,7 +71,7 @@ tamil-edge-lemma/
 │   ├── train.py
 │   ├── distill.py
 │   ├── quantize.py
-│   ├── export.py             # ONNX / LiteRT / ExecuTorch
+│   ├── export.py             # ONNX / LiteRT / ExecuTorch / ncnn
 │   ├── hybrid.py             # lookup table + neural fallback
 │   └── evaluate.py
 ├── baselines/
@@ -172,10 +172,17 @@ is reported, and licenses are documented.
 |---|---|
 | LSTM seq2seq | ~0.5M, 1M, 2M, 5M |
 | Character transformer | ~0.5M, 1M, 2M, 5M |
-| Character CNN encoder + small decoder | ~0.5M, 1M, 2M |
+| Character CNN encoder + small decoder (ablation only) | ~1M |
 | Edit-tree classifier (char encoder → edit-script class) | ~0.5M, 1M, 2M |
 
 Train each from scratch (3 seeds each). Report mean ± std accuracy.
+
+The char-CNN model is an **ablation**, not a full sweep family: it keeps the
+LSTM's attention decoder and swaps only the encoder for a dilated CNN. At 1M
+parameters it separates the two ways the edit classifier differs from the LSTM
+(CNN encoder vs single-pass edit-script output): is the edit classifier fast
+and robust because of its encoder or because it does not decode character by
+character?
 
 ### 5.2 Knowledge distillation
 
@@ -197,6 +204,8 @@ with and without distillation.
    - ONNX Runtime
    - LiteRT (TFLite)
    - ExecuTorch
+   - ncnn (via pnnx) — ARM-optimized, no dependencies, small footprint;
+     a strong fit for Raspberry Pi and Android CPU inference
 5. Verify exported model outputs match PyTorch outputs on the dev set
    (report agreement %).
 

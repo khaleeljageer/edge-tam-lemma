@@ -1,7 +1,37 @@
-model,split,n,acc,acc_noun,acc_verb,acc_other,acc_seen,acc_unseen
-identity,dev,668,0.2695,0.3788,0.0000,0.3729,0.1657,0.3063
-identity,test,692,0.2673,0.3857,0.0000,0.3913,0.1714,0.2998
-identity,test_unseen,517,0.2998,0.4218,0.0000,0.4239,,0.2998
-suffix_stripper,dev,668,0.4012,0.6017,0.0471,0.3644,0.3086,0.4341
-suffix_stripper,test,692,0.3873,0.5923,0.0654,0.3391,0.3029,0.4159
-suffix_stripper,test_unseen,517,0.4159,0.6218,0.0733,0.3587,,0.4159
+model,split,n,acc,acc_noun,acc_verb,acc_other,acc_seen,acc_unseen,crashes,notes
+identity,dev,668,0.2695,0.3788,0.0000,0.3729,0.1657,0.3063,0,lower bound
+identity,test,692,0.2673,0.3857,0.0000,0.3913,0.1714,0.2998,0,lower bound
+identity,test_unseen,517,0.2998,0.4218,0.0000,0.4239,,0.2998,0,lower bound
+identity,test_clean,277,0.2130,0.3529,0.0000,0.2973,0.1228,0.2364,0,lower bound
+suffix_stripper,dev,668,0.4012,0.6017,0.0471,0.3644,0.3086,0.4341,0,hand-written rules
+suffix_stripper,test,692,0.3873,0.5923,0.0654,0.3391,0.3029,0.4159,0,hand-written rules
+suffix_stripper,test_unseen,517,0.4159,0.6218,0.0733,0.3587,,0.4159,0,hand-written rules
+suffix_stripper,test_clean,277,0.3574,0.5809,0.0865,0.2973,0.2456,0.3864,0,hand-written rules
+tamil_lemmatizer_pkg,dev,668,0.8024,0.8106,0.8743,0.6610,0.8686,0.7789,0,pypi tamil-lemmatizer 0.0.2; training data unknown
+tamil_lemmatizer_pkg,test,692,0.7702,0.7328,0.9206,0.6087,0.8629,0.7389,0,pypi tamil-lemmatizer 0.0.2; training data unknown
+tamil_lemmatizer_pkg,test_unseen,517,0.7389,0.6909,0.9333,0.5652,,0.7389,0,pypi tamil-lemmatizer 0.0.2; training data unknown
+tamil_lemmatizer_pkg,test_clean,277,0.8267,0.7941,0.9231,0.6757,0.8947,0.8091,0,pypi tamil-lemmatizer 0.0.2; training data unknown
+stanza,dev,668,0.8713,0.9081,0.8586,0.7797,0.8914,0.8641,0,stanza 1.15.0 ta (trained on UD TTB train: use test_clean)
+stanza,test,692,0.8410,0.8678,0.7991,0.8348,0.8400,0.8414,0,stanza 1.15.0 ta (trained on UD TTB train: use test_clean)
+stanza,test_unseen,517,0.8414,0.8509,0.8400,0.8152,,0.8414,0,stanza 1.15.0 ta (trained on UD TTB train: use test_clean)
+stanza,test_clean,277,0.6534,0.6912,0.6442,0.5405,0.6491,0.6545,0,stanza 1.15.0 ta (trained on UD TTB train: use test_clean)
+teacher_lstm,dev,668,0.7171,0.8162,0.6545,0.5169,0.8514,0.6694,0,"ours: lstm_seq2seq, 15.81M params, beam 4"
+teacher_lstm,test,692,0.7283,0.7879,0.7196,0.5565,0.8571,0.6847,0,"ours: lstm_seq2seq, 15.81M params, beam 4"
+teacher_lstm,test_unseen,517,0.6847,0.7527,0.6800,0.4891,,0.6847,0,"ours: lstm_seq2seq, 15.81M params, beam 4"
+teacher_lstm,test_clean,277,0.6931,0.7353,0.6923,0.5405,0.8596,0.6500,0,"ours: lstm_seq2seq, 15.81M params, beam 4"
+teacher_transformer,dev,668,0.5629,0.6100,0.5236,0.4831,0.8114,0.4746,0,"ours: transformer, 7.44M params, beam 4"
+teacher_transformer,test,692,0.5318,0.6006,0.4626,0.4435,0.8229,0.4333,0,"ours: transformer, 7.44M params, beam 4"
+teacher_transformer,test_unseen,517,0.4333,0.5127,0.3067,0.4022,,0.4333,0,"ours: transformer, 7.44M params, beam 4"
+teacher_transformer,test_clean,277,0.4874,0.5368,0.4519,0.4054,0.8246,0.4000,0,"ours: transformer, 7.44M params, beam 4"
+lstm_tiny,dev,668,0.6916,0.7688,0.6597,0.5085,0.8286,0.6430,0,"ours: lstm_seq2seq, 0.46M params, greedy"
+lstm_tiny,test,692,0.6792,0.7741,0.5701,0.5826,0.7943,0.6402,0,"ours: lstm_seq2seq, 0.46M params, greedy"
+lstm_tiny,test_unseen,517,0.6402,0.7673,0.4800,0.5217,,0.6402,0,"ours: lstm_seq2seq, 0.46M params, greedy"
+lstm_tiny,test_clean,277,0.6787,0.7868,0.5865,0.5405,0.8596,0.6318,0,"ours: lstm_seq2seq, 0.46M params, greedy"
+edit_tiny,dev,668,0.6527,0.7855,0.4817,0.5254,0.6514,0.6531,0,"ours: edit_classifier, 0.34M params, single pass"
+edit_tiny,test,692,0.6575,0.7879,0.5467,0.4522,0.6229,0.6692,0,"ours: edit_classifier, 0.34M params, single pass"
+edit_tiny,test_unseen,517,0.6692,0.7964,0.5800,0.4348,,0.6692,0,"ours: edit_classifier, 0.34M params, single pass"
+edit_tiny,test_clean,277,0.6426,0.7574,0.5769,0.4054,0.6316,0.6455,0,"ours: edit_classifier, 0.34M params, single pass"
+thamizhimorph,dev,668,0.5135,0.5905,0.4084,0.4492,0.4743,0.5274,0,"thamizhi-morph@adbacceda5e8 via flookup; fixed FST order, first analysis, identity if unanalysed"
+thamizhimorph,test,692,0.5535,0.6474,0.4533,0.4435,0.5371,0.5590,0,"thamizhi-morph@adbacceda5e8 via flookup; fixed FST order, first analysis, identity if unanalysed"
+thamizhimorph,test_unseen,517,0.5590,0.6436,0.4733,0.4457,,0.5590,0,"thamizhi-morph@adbacceda5e8 via flookup; fixed FST order, first analysis, identity if unanalysed"
+thamizhimorph,test_clean,277,0.5379,0.6544,0.4423,0.3784,0.5614,0.5318,0,"thamizhi-morph@adbacceda5e8 via flookup; fixed FST order, first analysis, identity if unanalysed"

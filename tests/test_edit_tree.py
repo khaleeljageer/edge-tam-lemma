@@ -58,3 +58,10 @@ def test_vocab_save_load(tmp_path):
     vocab = ScriptVocab.build(PAIRS)
     vocab.save(str(tmp_path / "scripts.txt"))
     assert ScriptVocab.load(str(tmp_path / "scripts.txt")).itos == vocab.itos
+
+
+def test_applicable_ids_match_bruteforce():
+    vocab = ScriptVocab.build(PAIRS)
+    for word in ["மரங்கள்", "வீட்டை", "சென்றார்கள்", "அ", "பூ", "நாய்களை"]:
+        expected = [i for i, s in enumerate(vocab.itos) if s.applies(word)]
+        assert vocab.applicable_ids(word) == expected

@@ -1,0 +1,24 @@
+# M2 teacher: 4-layer character transformer, beam search at evaluation
+# (research plan section 4.2). Small data: high dropout, warmup, label smoothing.
+name: teacher_transformer
+model:
+  type: transformer
+  hidden: 256
+  heads: 4
+  layers: 4
+  ff_mult: 4
+  dropout: 0.3
+data:
+  tokenizer: codepoint
+  max_len: 48
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 0.0005
+  patience: 25
+  seed: 13
+  label_smoothing: 0.1
+  warmup_steps: 1000
+decode:
+  beam: 4
+  alpha: 0.0
