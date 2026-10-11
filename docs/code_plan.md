@@ -266,41 +266,44 @@ Calibration on dev (`bench/results/m3_expansion/calibration_dev.csv`):
 `import` turns reviewed rows into `data/expanded/train.tsv` (gold train +
 reviewed pairs), dropping dev/test lemmas.
 
-First review (2026-10-11): rows 1–1000 of the batch, saved as
-`data/annotation/wiki_batch01_reviewed.tsv` — 907 accepted (159 corrected),
-22 rejected, 71 left blank; `import` kept 826 (81 dropped: dev/test lemma) →
-3,979 training pairs (+26%). Retrained at 500k, seeds 13–15 (`*_exp` configs;
-KD data rebuilt with `tel.distill --gold data/expanded/train.tsv` →
-`data/distill/teacher_lstm_wiki20k_exp`, 3,979 gold + 8,927 teacher words).
-`bench/results/m3_expansion/accuracy.csv`:
+Review of `data/annotation/wiki_batch01_reviewed.tsv` (rows 1–1000 on
+2026-10-11, rows 1001–3000 on 2026-10-12): 2,830 accepted (413 corrected), 39
+rejected, 131 left blank; `import` kept 2,583 (247 dropped: dev/test lemma) →
+5,736 training pairs (+82% over the 3,153 gold). Retrained at 500k, seeds 13–15
+(`*_exp` configs; KD data rebuilt with `tel.distill --gold data/expanded/train.tsv`
+→ `data/distill/teacher_lstm_wiki20k_exp`, 5,736 gold + 8,777 teacher words).
+`bench/results/m3_expansion/accuracy.csv` (now the 3,000-row runs; the
+1,000-row column is from the earlier version of that file, commit 8cfcb71):
 
-| Model | dev | test | test unseen |
-|---|---|---|---|
-| LSTM | 71.3 ± 1.6 | 70.5 ± 1.1 | 65.9 ± 2.0 |
-| LSTM + reviewed | 71.3 ± 0.5 | 71.3 ± 0.7 | 66.5 ± 0.8 |
-| LSTM + KD | 72.3 ± 1.6 | 73.4 ± 1.0 | 69.8 ± 1.8 |
-| LSTM + KD + reviewed | 72.0 ± 1.1 | 74.5 ± 2.3 | 71.0 ± 3.3 |
-| Edit | 64.3 ± 0.2 | 64.8 ± 1.3 | 65.4 ± 1.5 |
-| Edit + reviewed | 65.0 ± 0.3 | 65.6 ± 1.7 | 66.0 ± 2.6 |
-| Edit + KD | 68.5 ± 0.6 | 70.9 ± 1.0 | 71.4 ± 1.2 |
-| Edit + KD + reviewed | 69.0 ± 0.3 | 70.9 ± 1.2 | 71.4 ± 1.2 |
+| Model | dev | test | test unseen | test, rows 1–1000 only |
+|---|---|---|---|---|
+| LSTM | 71.3 ± 1.6 | 70.5 ± 1.1 | 65.9 ± 2.0 | |
+| LSTM + reviewed | 72.0 ± 0.3 | 70.9 ± 2.0 | 65.8 ± 1.6 | 71.3 ± 0.7 |
+| LSTM + KD | 72.3 ± 1.6 | 73.4 ± 1.0 | 69.8 ± 1.8 | |
+| LSTM + KD + reviewed | 73.3 ± 1.1 | 72.5 ± 2.8 | 68.5 ± 2.8 | 74.5 ± 2.3 |
+| Edit | 64.3 ± 0.2 | 64.8 ± 1.3 | 65.4 ± 1.5 | |
+| Edit + reviewed | 67.1 ± 1.4 | 66.8 ± 1.7 | 67.4 ± 1.7 | 65.6 ± 1.7 |
+| Edit + KD | 68.5 ± 0.6 | 70.9 ± 1.0 | 71.4 ± 1.2 | |
+| Edit + KD + reviewed | 69.5 ± 0.8 | 71.7 ± 0.9 | 72.1 ± 1.1 | 70.9 ± 1.2 |
 
-- +0.5–1.1 test points, within seed noise; dev does not move for the LSTM. The
-  reviewed words are frequent Wikipedia forms, the test words rarer treebank
-  forms, so 826 pairs barely shift the model. `lstm_kd_exp_500k_s13` is the
-  best single student so far (test 76.0, unseen 73.5) but s15 is 71.8.
+- The edit classifier gains: +2.8 dev / +2.0 test from scratch, +1.0 / +0.8
+  with KD; more reviewed pairs add edit scripts it could not express before.
+  The LSTM gains on dev (+0.7 / +1.0) but not on test, and LSTM + KD varies
+  more between seeds (test 69.5–75.0). Only the scratch-edit dev gain is clearly
+  above seed noise. The reviewed words are frequent Wikipedia forms, the test
+  words rarer treebank forms.
 - Their main value is the hybrid table (frequent forms, human labels over
   silver). Rebuilt as `table_<N>_reviewed.tsv` (`build_tables.py --reviewed …
   --tag reviewed`, `bench/results/m4_hybrid/coverage_reviewed.csv`). Test
   accuracy on table hits is unchanged (86.1% at 1k) by construction: the review
   batch excludes every train/dev/test word. On Wikipedia running text the
-  reviewed words cover 14.9% of tokens and the corrected labels 2.2% — about
-  +2 points of table accuracy there (no gold to measure it).
+  reviewed words cover 22.7% of tokens and the corrected labels 3.2% — about
+  +3 points of table accuracy there (no gold to measure it).
 - The review confirms the dev calibration: `suggested` kept for 98.7% of agree,
-  76.9% of majority, 46.2% of conflict rows (dev: 93.7 / 79.8 / 49.4). Agree rows
+  83.0% of majority, 51.6% of conflict rows (dev: 93.7 / 79.8 / 49.4). Agree rows
   can be accepted with a quick skim. Reviewer guideline fix: the
   treebank reduces most -ஆக adverbs to the noun (66 of 77; kept: அதிகமாக,
-  குறிப்பாக, வேகமாக, எதிராக ...); 13 reviewed rows keep the -ஆக form.
+  குறிப்பாக, வேகமாக, எதிராக ...); 13 reviewed rows in 1–1000 keep the -ஆக form.
 
 **M4 step 1 — hybrid lookup (2026-10-11).** `tel.hybrid` (table first, model
 on misses) and `scripts/hybrid/build_tables.py`: top-N Wikipedia forms, labels

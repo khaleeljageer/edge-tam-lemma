@@ -1,10 +1,10 @@
 {
  "wiki_batch01_reviewed.tsv": {
-  "kept": 826,
-  "corrected": 143,
-  "dropped_heldout": 81,
-  "unchecked": 2071,
-  "skipped": 22
+  "kept": 2583,
+  "corrected": 362,
+  "dropped_heldout": 247,
+  "unchecked": 131,
+  "skipped": 39
  },
- "total_pairs": 3979
+ "total_pairs": 5736
 }

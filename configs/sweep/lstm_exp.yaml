@@ -1,5 +1,5 @@
-# M3 step 5 data expansion: lstm.yaml trained on gold train + 826 human-reviewed
-# Wikipedia words (data/annotation/wiki_batch01_reviewed.tsv, rows 1-1000). Compare with lstm_<size>.
+# M3 step 5 data expansion: lstm.yaml trained on gold train + 2,583 human-reviewed
+# Wikipedia words (data/annotation/wiki_batch01_reviewed.tsv, rows 1-3000). Compare with lstm_<size>.
 # Evaluated greedily (as deployed on device).
 name: lstm_exp
 model:
