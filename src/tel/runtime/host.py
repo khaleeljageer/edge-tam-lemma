@@ -23,6 +23,7 @@ graph that needs no permutation (CNN encoder) simply does not ask for one.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sequence
 
 import numpy as np
@@ -68,18 +69,96 @@ def reversal_matrices(mask: np.ndarray) -> np.ndarray:
     return perm
 
 
-def chunk_sizes(n: int, graphs: Graphs) -> list[tuple[int, int | None]]:
-    """Split n items into (chunk_len, graph_key) pieces that the graphs can take."""
+def chunk_sizes(n: int, graphs: Graphs,
+                cost: dict[int, float] | None = None) -> list[tuple[int, int | None]]:
+    """Split n items into (chunk_len, graph_key) pieces that the graphs can take.
+
+    With `cost` (seconds per call of each fixed-batch graph, from `calibrate`): the
+    split with the lowest total cost, padding included. Without it, a heuristic that
+    assumes a call costs about the same however much of the batch is padding: full
+    batches of the largest graph first; a remainder r is padded up to the smallest
+    graph that fits only if it fills at least half of it, otherwise it goes through
+    the next smaller graph(s). With graphs {1, 64}, 23 leftover words (e.g. the
+    table misses of a hybrid batch) take 23 batch-1 calls instead of one call
+    padded to 64. That assumption fails for the LSTM on LiteRT, where a batch-64
+    call costs only ~18 batch-1 calls; calibrate to get the cost-based split.
+    """
     if None in graphs:
         return [(n, None)]
     sizes = sorted(k for k in graphs if k is not None)
+    if cost is not None and all(s in cost for s in sizes):
+        return _cheapest_split(n, sizes, cost)
     out = []
     while n > 0:
         fit = next((s for s in sizes if s >= n), sizes[-1])
+        if fit > n and 2 * n < fit and fit != sizes[0]:
+            fit = max(s for s in sizes if s < fit)  # too much padding: step down
         take = min(n, fit)
         out.append((take, fit))
         n -= take
     return out
+
+
+def _cheapest_split(n: int, sizes: list[int], cost: dict[int, float]) -> list[tuple[int, int]]:
+    """Dynamic programme over the number of items left: best[r] = cheapest way to
+    process r items, each call taking up to `size` of them."""
+    best = [0.0] + [float("inf")] * n
+    choice = [0] * (n + 1)
+    for r in range(1, n + 1):
+        for s in sizes:
+            c = cost[s] + best[max(0, r - s)]
+            if c < best[r]:
+                best[r], choice[r] = c, s
+    out = []
+    while n > 0:
+        take = min(n, choice[n])
+        out.append((take, choice[n]))
+        n -= take
+    return sorted(out, key=lambda x: -x[1])  # largest graphs first
+
+
+class _ChunkedHost:
+    """Shared batching for the hosts: `_call(src, key)` runs one graph call on a
+    (key, max_len) id batch; `calibrate` measures each fixed-batch graph's cost."""
+
+    tok: CharTokenizer
+    max_len: int
+    cost: dict[int, float] | None = None
+
+    def _graphs(self) -> Graphs:
+        raise NotImplementedError
+
+    def _call(self, src: np.ndarray, key: int | None) -> np.ndarray:
+        raise NotImplementedError
+
+    def _chunks(self, words: Sequence[str]):
+        """Yield (n, output of one graph call trimmed to n rows) over `words`."""
+        src = encode_fixed(self.tok, words, self.max_len)
+        start = 0
+        for n, key in chunk_sizes(len(words), self._graphs(), self.cost):
+            yield n, self._call(_pad_batch(src[start : start + n], key), key)[:n]
+            start += n
+
+    def calibrate(self, words: Sequence[str], reps: int = 3) -> dict[int, float] | None:
+        """Time one call of every fixed-batch graph on real words (best of `reps`,
+        after one warm-up call) so `chunk_sizes` can pick the cheapest split.
+        Nothing to do for dynamic-batch graphs or a single fixed size."""
+        sizes = sorted(k for k in self._graphs() if k is not None)
+        if len(sizes) < 2 or not words:
+            return None
+        cost = {}
+        for s in sizes:
+            src = encode_fixed(self.tok, [words[i % len(words)] for i in range(s)],
+                               self.max_len)
+            self._call(src, s)
+            times = []
+            for _ in range(reps):
+                t0 = time.perf_counter()
+                self._call(src, s)
+                times.append(time.perf_counter() - t0)
+            cost[s] = min(times)
+        self.cost = cost
+        return cost
 
 
 def _pad_batch(x: np.ndarray, size: int | None, axis: int = 0) -> np.ndarray:
@@ -98,21 +177,20 @@ def graph_inputs(names: Sequence[str], src: np.ndarray, max_len: int) -> list[np
     return [make[n]() for n in names]
 
 
-class EditHost:
+class EditHost(_ChunkedHost):
     def __init__(self, tok: CharTokenizer, vocab: ScriptVocab, max_len: int,
                  model: Graphs, input_names: Sequence[str] = ("src",)) -> None:
         self.tok, self.vocab, self.max_len, self.model = tok, vocab, max_len, model
         self.input_names = list(input_names)
 
+    def _graphs(self) -> Graphs:
+        return self.model
+
+    def _call(self, src: np.ndarray, key: int | None) -> np.ndarray:
+        return self.model[key](graph_inputs(self.input_names, src, self.max_len))[0]
+
     def logits(self, words: Sequence[str]) -> np.ndarray:
-        src = encode_fixed(self.tok, words, self.max_len)
-        parts, start = [], 0
-        for n, key in chunk_sizes(len(words), self.model):
-            chunk = _pad_batch(src[start : start + n], key)
-            out = self.model[key](graph_inputs(self.input_names, chunk, self.max_len))[0]
-            parts.append(out[:n])
-            start += n
-        return np.concatenate(parts)
+        return np.concatenate([out for _, out in self._chunks(words)])
 
     def lemmatize(self, words: list[str]) -> list[str]:
         if not words:
@@ -126,7 +204,7 @@ class EditHost:
         return [self.vocab.itos[c].apply(w) or w for c, w in zip(classes, words, strict=True)]
 
 
-class Seq2SeqHost:
+class Seq2SeqHost(_ChunkedHost):
     def __init__(self, tok: CharTokenizer, max_len: int, hidden: int, layers: int,
                  encoder: Graphs, decode_step: Graphs,
                  encoder_inputs: Sequence[str] = ("src",)) -> None:
@@ -156,19 +234,19 @@ class Seq2SeqHost:
                 break
         return np.stack(out, 1)
 
+    def _graphs(self) -> Graphs:
+        return self.encoder
+
+    def _call(self, src: np.ndarray, key: int | None) -> np.ndarray:
+        return self._greedy(src, key)
+
     def lemmatize(self, words: list[str]) -> list[str]:
         if not words:
             return []
-        src = encode_fixed(self.tok, words, self.max_len)
-        result, start = [], 0
-        for n, key in chunk_sizes(len(words), self.encoder):
-            ids = self._greedy(_pad_batch(src[start : start + n], key), key)[:n]
-            result.extend(self.tok.decode(row.tolist()) for row in ids)
-            start += n
-        return result
+        return [self.tok.decode(row.tolist()) for _, ids in self._chunks(words) for row in ids]
 
 
-class TransformerHost:
+class TransformerHost(_ChunkedHost):
     """Greedy decoding for the exported character transformer (fixed-length prefix)."""
 
     def __init__(self, tok: CharTokenizer, max_len: int, prefix_len: int, encoder: Graphs,
@@ -198,13 +276,13 @@ class TransformerHost:
             prefix[:, t + 1] = tok
         return np.stack(out, 1)
 
+    def _graphs(self) -> Graphs:
+        return self.encoder
+
+    def _call(self, src: np.ndarray, key: int | None) -> np.ndarray:
+        return self._greedy(src, key)
+
     def lemmatize(self, words: list[str]) -> list[str]:
         if not words:
             return []
-        src = encode_fixed(self.tok, words, self.max_len)
-        result, start = [], 0
-        for n, key in chunk_sizes(len(words), self.encoder):
-            ids = self._greedy(_pad_batch(src[start : start + n], key), key)[:n]
-            result.extend(self.tok.decode(row.tolist()) for row in ids)
-            start += n
-        return result
+        return [self.tok.decode(row.tolist()) for _, ids in self._chunks(words) for row in ids]

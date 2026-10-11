@@ -91,6 +91,12 @@ class HybridLemmatizer:
                 out[i] = lemma
         return out
 
+    def calibrate(self, words: list[str]):
+        """Calibrate the fallback's batching on the words the table misses."""
+        calibrate = getattr(self.fallback, "calibrate", None)
+        miss = [w for w in words if w not in self.table] or list(words)
+        return calibrate(miss) if calibrate else None
+
     @property
     def hit_rate(self) -> float:
         return self.hits / self.lookups if self.lookups else 0.0

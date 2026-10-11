@@ -1,0 +1,18 @@
+# M3 step 5 data expansion: lstm.yaml trained on gold train + 826 human-reviewed
+# Wikipedia words (data/annotation/wiki_batch01_reviewed.tsv, rows 1-1000). Compare with lstm_<size>.
+# Evaluated greedily (as deployed on device).
+name: lstm_exp
+model:
+  type: lstm_seq2seq
+  emb: 64
+  layers: 1
+  dropout: 0.2
+data:
+  tokenizer: codepoint
+  max_len: 48
+  train_file: data/expanded/train.tsv
+train:
+  epochs: 80
+  batch_size: 32
+  lr: 0.002
+  patience: 12

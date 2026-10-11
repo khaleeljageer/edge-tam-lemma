@@ -42,6 +42,18 @@ def test_distill_adds_teacher_words_without_heldout_lemmas(tmp_path):
     assert stats["extra_kept"] + stats["extra_dropped_heldout_lemma"] \
         + stats["extra_dropped_low_confidence"] == 3
 
+    # --gold: reviewed pairs replace train.tsv and are not teacher-labelled again.
+    gold = tmp_path / "expanded.tsv"
+    write_tsv(gold, [*train_pairs, Pair("தேன்கள்", "தேன்", "NOUN", "wiki-reviewed")])
+    out2 = tmp_path / "distill_gold"
+    subprocess.run([sys.executable, "-m", "tel.distill", "--teacher", str(tmp_path / "teacher"),
+                    "--gold", str(gold), "--extra", str(words), "--min-token-prob", "0.0",
+                    "--out", str(out2)], check=True, capture_output=True)
+    pairs2 = read_tsv(out2 / "train.tsv")
+    assert pairs2[: len(train_pairs) + 1] == read_tsv(gold)
+    assert [p.word for p in pairs2].count("தேன்கள்") == 1
+    assert json.loads((out2 / "distill_stats.json").read_text())["extra_candidates"] == 2
+
 
 def test_train_file_override(tmp_path):
     data = tmp_path / "data"

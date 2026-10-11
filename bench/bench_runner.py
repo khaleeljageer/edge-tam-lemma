@@ -12,7 +12,9 @@ Protocol (research plan section 8.2): a fixed word list in fixed order, 200
 warm-up words not measured, each configuration repeated --reps times and the
 median taken, 1 thread and all cores, batch 1 and batch 64. Each (model,
 threads) configuration runs in a fresh subprocess so peak RSS and thread
-settings do not leak between configurations.
+settings do not leak between configurations. Fixed-batch exports first time
+one call of each batch size (`calibrate`, not measured) so a batch with few
+words, e.g. the table misses in a hybrid run, is split the cheapest way.
 
 Output: one CSV row per (model, runtime, threads, batch) appended to
 bench/results/<device>.csv. For batch 64, latency columns are per word
@@ -154,6 +156,10 @@ def worker(args: argparse.Namespace) -> None:
     if args.train_lemmas and Path(args.train_lemmas).exists():
         train_lemmas = set(Path(args.train_lemmas).read_text(encoding="utf-8").split())
     words = [gold[i % len(gold)][0] for i in range(args.n)]
+    # Fixed-batch exports (LiteRT): measure each graph's call cost so leftover words
+    # are split the cheapest way (tel.runtime.host.chunk_sizes). Not timed.
+    if hasattr(lem, "calibrate"):
+        lem.calibrate(words[:256])
 
     reference = None if args.table else read_reference(args.model)
     result = {"runtime_version": version(RUNTIME_PACKAGE[manifest["runtime"]]),

@@ -1739,6 +1739,7 @@ export = [
     { name = "onnxscript", specifier = ">=0.2" },
     { name = "pnnx", specifier = ">=20260526" },
 ]
+paper = [{ name = "matplotlib", specifier = ">=3.9" }]
 
 [[package]]
 name = "tel-env-litert"

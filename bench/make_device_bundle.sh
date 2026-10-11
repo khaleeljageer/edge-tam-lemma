@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 mkdir -p bench/tmp
 # Optional arguments: run names to include (default: every run with exports).
 roots=$( [ $# -gt 0 ] && printf 'runs/%s ' "$@" || echo runs )
-exports=$(find $roots -path '*/export/onnx' -o -path '*/export/ncnn' -o -path '*/export/ncnn-fp16' -o -path '*/export/tflite' -o -path '*/export/pte' | sort)
+exports=$(find $roots -path '*/export/onnx' -o -path '*/export/onnx-int8' -o -path '*/export/onnx-int8dyn' -o -path '*/export/ncnn' -o -path '*/export/ncnn-fp16' -o -path '*/export/tflite' -o -path '*/export/tflite-int8dyn' -o -path '*/export/pte' | sort)
 [ -n "$exports" ] || { echo "no exports under runs/; run tel.export first" >&2; exit 1; }
 # Record the code version: commit, plus "-dirty" if there are uncommitted changes.
 sha=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)

@@ -22,9 +22,13 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+# Figure and table scripts in paper/figures/.
+paper = [
+    "matplotlib>=3.9",
+]
 
 [tool.uv]
-default-groups = ["dev", "export"]
+default-groups = ["dev", "export", "paper"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
