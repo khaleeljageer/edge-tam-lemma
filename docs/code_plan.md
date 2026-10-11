@@ -236,7 +236,19 @@ words not in UD TTB train, the only fair split for tools trained on TTB):
   ~40% on ONNX, 0% on ncnn). The edit classifier's single-pass output, not its
   CNN encoder, explains both its speed everywhere and its unseen-lemma accuracy.
 - Distilled 0.5M students (`lstm_kd_500k_s13`, `edit_kd_500k_s13`, best dev
-  seed) exported to ONNX / ncnn / LiteRT, agreement 100%; Pi bundle pending.
+  seed) exported to ONNX / ncnn / LiteRT, agreement 100% on desktop and Pi 5
+  (`bench/results/m3_distill/`). Pi 5, ms/word, best runtime:
+
+  | Model | test | b1, 1 thr | b1, 4 thr | RAM (ncnn) |
+  |---|---|---|---|---|
+  | LSTM 1M (scratch) | 71.5 | 5.29 ONNX | 5.64 ncnn | 41 MB |
+  | LSTM 0.5M (distilled) | 72.7 | 2.96 ONNX | 2.45 ONNX | 40 MB |
+  | edit 1M (scratch) | 67.5 | 2.18 LiteRT | 1.14 LiteRT | 41 MB |
+  | edit 0.5M (distilled) | 71.0 | 0.79 LiteRT | 0.49 LiteRT | 40 MB |
+
+  Distilled 0.5M students are more accurate and 1.8–2.8× faster than the 1M
+  scratch models; the distilled edit classifier is 4–5× faster than the
+  distilled LSTM at −1.7 test / +3.9 unseen.
 
 **M3 step 5 — data expansion (in progress).** `scripts/data/expand_candidates.py`:
 candidate lemmas for the top Wikipedia words from four sources (ThamizhiMorph,
@@ -253,6 +265,42 @@ Calibration on dev (`bench/results/m3_expansion/calibration_dev.csv`):
 
 `import` turns reviewed rows into `data/expanded/train.tsv` (gold train +
 reviewed pairs), dropping dev/test lemmas. Needs a human reviewer.
+
+**M4 step 1 — hybrid lookup (2026-10-11).** `tel.hybrid` (table first, model
+on misses) and `scripts/hybrid/build_tables.py`: top-N Wikipedia forms, labels
+gold train > reviewed > silver (offline 4-source vote). Evaluated with
+`bench_runner --weighted --tables`: test/dev words repeated by UD corpus
+frequency (stand-in for `test_news`, which needs news-text rights).
+`bench/results/m4_hybrid/` (`coverage.csv`, `desktop.csv`, `desktop_dev.csv`).
+Token accuracy, distilled 0.5M students, desktop ONNX 1 thread, mean ms/token:
+
+| Table | Size | Test hit | edit test | edit dev | edit ms | LSTM test | LSTM dev | LSTM ms |
+|---|---|---|---|---|---|---|---|---|
+| none | – | – | 77.8 | 65.3 | 0.122 | 78.3 | 72.4 | 0.487 |
+| 1k | 45 KB | 38% | 79.7 | 71.2 | 0.077 | 79.7 | 74.0 | 0.314 |
+| 5k | 247 KB | 56% | 80.4 | 73.0 | 0.054 | 80.0 | 74.2 | 0.221 |
+| 10k | 512 KB | 64% | 81.0 | 73.6 | 0.045 | 81.3 | 74.5 | 0.183 |
+| 50k | 2.7 MB | 84% | 82.5 | 74.2 | 0.020 | 83.2 | 75.0 | 0.081 |
+
+- The table helps on both splits, most for the edit classifier (+3 test, +8
+  dev at 10k), and closes its gap to the LSTM; mean latency falls 2.7× at 10k.
+- Gains come from frequent words where the offline vote beats the student; the
+  table only ever runs the expensive labellers once, offline.
+- Memory: +0 MB (≤10k) to +9 MB (50k) RSS with ncnn; table file is the cost.
+- Pi 5 (`rpi5-hybrid.csv`, 120 rows, same accuracies as desktop): mean
+  ms/token, batch 1, best runtime per model:
+
+  | Table | edit (LiteRT 4 thr) | edit (ncnn 4 thr) | LSTM (ONNX 1 thr) |
+  |---|---|---|---|
+  | none | 0.488 | 0.828 | 2.96 |
+  | 10k | 0.183 | 0.302 | 1.10 |
+  | 50k | 0.078 | 0.130 | 0.48 |
+
+  Speed-up ≈ 1 / (1 − hit rate): the lookup itself costs ~2 µs on the Pi.
+- Fixed-batch runtimes (LiteRT; graphs for batch 1 and 64 only) get no
+  speed-up at batch 64: the misses of a 64-word batch are padded back to 64.
+  Fix: export intermediate batch sizes, or send small miss sets through the
+  batch-1 graph.
 
 ## E. Risks
 

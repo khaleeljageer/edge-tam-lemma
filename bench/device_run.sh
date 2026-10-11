@@ -3,6 +3,9 @@
 # Installs onnxruntime + ncnn + ai-edge-litert in a local venv (no torch), records device
 # info, and benchmarks every export whose runtime imports. ExecuTorch exports need
 # torch on the device; they are included only if executorch is importable.
+# If the bundle has hybrid lookup tables (data/interim/hybrid/table_*.tsv), a second
+# pass benchmarks model + table on a frequency-weighted token stream (tel.hybrid).
+# HYBRID_ONLY=1 bash bench/device_run.sh <device>   skips the plain pass.
 set -euo pipefail
 device=${1:?usage: device_run.sh <device-name> [threads...]}
 shift
@@ -32,6 +35,17 @@ governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null
 
 mkdir -p bench/results
 bash bench/device_info.sh > "bench/results/${device}.info.txt" 2>&1 || true
-PYTHONPATH=src .venv/bin/python bench/bench_runner.py --device "$device" \
-    --threads $threads --models $models
-echo "copy back: bench/results/${device}.csv and bench/results/${device}.info.txt"
+files="bench/results/${device}.info.txt"
+if [ "${HYBRID_ONLY:-0}" != 1 ]; then
+    PYTHONPATH=src .venv/bin/python bench/bench_runner.py --device "$device" \
+        --threads $threads --models $models
+    files="$files bench/results/${device}.csv"
+fi
+tables=$(ls data/interim/hybrid/table_*.tsv 2>/dev/null | sort -V || true)
+if [ -n "$tables" ]; then
+    PYTHONPATH=src .venv/bin/python bench/bench_runner.py --device "$device" \
+        --threads $threads --models $models --weighted --tables none $tables \
+        --out "bench/results/${device}-hybrid.csv"
+    files="$files bench/results/${device}-hybrid.csv"
+fi
+echo "copy back: $files"
