@@ -485,12 +485,46 @@ wrapped in `\ta{}`, needs XeLaTeX/LuaLaTeX). Errors on test (500k, seed 13):
 - The automatic categories still need a manual pass on the 15 examples before
   the paper.
 
+**M5 step 3 — manuscript (2026-10-14).** Target: Sādhanā (Indian Academy of
+Sciences / Springer, Scopus + WoS, regular paper ≤ 20 pages, numbered references
+in citation order, ≤ 6 keywords, 300 dpi figures, AI-use disclosure required);
+TALLIP if it is not accepted. `paper/main.tex` uses the journal's class
+(`paper/sadhana.cls`, downloaded 2026-10-14) with XeLaTeX (TeX Gyre Termes +
+Noto Serif Tamil) and `\input`s the generated tables and figures from
+`paper/figures/out/`. Tables have captions above; wide ones are `table*`
+(`latex_table(..., wide=True)`). New tables: `tab_sweep` (all sizes),
+`tab_ablation` (1M encoder ablation, accuracy from
+`bench/results/m3_ablation/accuracy.csv`, written by `tel.sweep --csv`, plus Pi
+latency) and `tab_expansion`. Figures are also written as 300 dpi PNG/TIFF.
+`paper/order_refs.py` keeps the `\bibitem`s in citation order (tested).
+References checked online; `%VERIFY` marks three entries still to confirm.
+Open (`\todo{}`): speaker-number source, more Tamil/Dravidian related work,
+second annotator, manual check of the error examples, repository URL, code
+licence, funding, AI-use statement. Not compiled yet (no TeX on the dev
+machine). Test clean for the distilled students (seed 13) added to
+`accuracy_baselines.csv` (`collect_runs.py`): LSTM+KD 72.9, Edit+KD 70.8,
+teacher 69.3. `docs/reproduce.md` lists the commands behind every result.
+Compiled 2026-10-14 (XeLaTeX): 9 pages, no overfull boxes (tables are scaled to
+the column with `adjustbox`). Second annotator (a Tamil professor, Dr. Revathi):
+`scripts/data/agreement.py sample` wrote a blind, status-stratified 200-word
+sheet and the 15 error examples to `data/annotation/agreement/` (instructions in
+its README, rules in `docs/annotation_guidelines.md`); `score` writes
+`bench/results/m3_expansion/agreement.csv`. Code licence: GPL-3.0 (`LICENSE`).
+
+**Devices (2026-10-13).** Final device set: Raspberry Pi 5 (ARM edge) and the
+desktop (x86 reference); Android phone and Qualcomm board dropped (research plan
+§8.1). The only phone at hand, a Galaxy A13, runs 32-bit Android (armeabi-v7a
+only), for which the onnxruntime / LiteRT / ncnn Python packages have no builds
+(details in `bench/devices.md`). Limitations paragraph for the paper: the Pi 5's
+Cortex-A76 cores are common in mid-range phones, but Android runtime builds were
+not measured; low-end phones still ship 32-bit Android, which needs native
+runtime builds rather than the Python packages used here.
+
 ## E. Risks
 
 - ~~LSTM operator support in ExecuTorch / LiteRT / ncnn~~ — resolved at M2:
   both models export to ONNX, ExecuTorch (XNNPACK), LiteRT and ncnn with 100%
-  dev agreement (ncnn also tested with a 2-layer LSTM). Still to confirm on
-  ARM devices.
+  dev agreement (ncnn also tested with a 2-layer LSTM); confirmed on the Pi 5.
 - ~~LiteRT batch-64 LSTM encoder 6.7 MB~~ — caused by the gather-based
   reversal; the permutation-matmul version is 1.5 MB.
 - Reduced-precision runtimes can fail silently on a device while the desktop

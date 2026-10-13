@@ -97,18 +97,25 @@ def seed_stats(rows: Iterable[dict[str, str]], key: tuple[str, ...],
 
 
 def latex_table(path: Path, header: list[str], rows: list[list[str]], align: str,
-                caption: str, label: str) -> None:
-    """Write a booktabs table (needs \\usepackage{booktabs})."""
+                caption: str, label: str, wide: bool = False) -> None:
+    """Write a booktabs table (needs booktabs and adjustbox); wide = table* (both columns).
+
+    A table wider than the column (or page, if wide) is scaled down to fit.
+
+    The caption goes above the table (journal style).
+    """
     def esc(s: str) -> str:
         return s.replace("%", r"\%").replace("&", r"\&").replace("_", r"\_")
 
-    lines = [r"\begin{table}[t]", r"\centering", r"\small",
+    env = "table*" if wide else "table"
+    lines = [rf"\begin{{{env}}}[t]", r"\centering", r"\small",
+             rf"\caption{{{caption}}}", rf"\label{{{label}}}",
+             r"\begin{adjustbox}{max width=\linewidth}",
              rf"\begin{{tabular}}{{{align}}}", r"\toprule",
              " & ".join(esc(h) for h in header) + r" \\", r"\midrule"]
     for row in rows:
         lines.append(r"\midrule" if row == ["--"] else " & ".join(esc(c) for c in row) + r" \\")
-    lines += [r"\bottomrule", r"\end{tabular}", rf"\caption{{{caption}}}",
-              rf"\label{{{label}}}", r"\end{table}", ""]
+    lines += [r"\bottomrule", r"\end{tabular}", r"\end{adjustbox}", rf"\end{{{env}}}", ""]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -129,7 +136,8 @@ def setup_matplotlib():
 
 def save(fig, out_dir: Path, name: str) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = [out_dir / f"{name}.pdf", out_dir / f"{name}.png"]
+    # PDF for the manuscript; PNG and TIFF at 300 dpi, the print resolution Sadhana asks for.
+    paths = [out_dir / f"{name}.{ext}" for ext in ("pdf", "png", "tiff")]
     for p in paths:
-        fig.savefig(p, metadata={"CreationDate": None} if p.suffix == ".pdf" else None)
+        fig.savefig(p, dpi=300, metadata={"CreationDate": None} if p.suffix == ".pdf" else None)
     return paths

@@ -21,7 +21,7 @@ tar czf bench/tmp/device_bundle.tar.gz \
     --exclude='__pycache__' \
     src/tel bench/bench_runner.py bench/device_run.sh bench/device_info.sh bench/BUNDLE_VERSION \
     data/processed/test.tsv data/processed/splits/train.txt \
-    $(ls data/interim/hybrid/table_*.tsv 2>/dev/null || true) \
+    $(ls data/interim/hybrid/table_*k.tsv 2>/dev/null || true) \
     $exports
 rm bench/BUNDLE_VERSION
 echo "wrote bench/tmp/device_bundle.tar.gz (code $sha, $(du -h bench/tmp/device_bundle.tar.gz | cut -f1))"

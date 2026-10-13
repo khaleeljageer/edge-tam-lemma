@@ -8,6 +8,9 @@ Writes to paper/figures/out/:
   tab_hybrid.tex    lookup table size N vs hit rate, accuracy, Pi latency and memory
   tab_errors.tex    error categories per model (scripts/analysis/error_analysis.py)
   tab_error_examples.tex  categorized test errors of the deployed model
+  tab_sweep.tex     test accuracy per model family and size budget (3 seeds)
+  tab_ablation.tex  1M encoder ablation: accuracy and Pi 5 latency per runtime
+  tab_expansion.tex training on gold + human-reviewed Wikipedia words
 
 Tamil text is wrapped in \\ta{...}; define it in the paper preamble for XeLaTeX or
 LuaLaTeX, e.g. \\newfontfamily\\tamilfont{Noto Serif Tamil}[Script=Tamil]
@@ -120,7 +123,7 @@ def quant_table(out_dir: Path) -> Path:
                  "unless noted); Agree = word-level agreement with the fp32 PyTorch model on "
                  "test. int8 dyn: int8 weights, activations quantized per call; int8 static: "
                  "calibrated QDQ on Conv/MatMul/Gemm."),
-        label="tab:quant")
+        label="tab:quant", wide=True)
     return path
 
 
@@ -156,7 +159,7 @@ def hybrid_table(out_dir: Path) -> Path:
                  "Pi 5, batch 1, best thread count, mean ms per token: Edit + KD on LiteRT "
                  "(fp32 / int8 dynamic), LSTM + KD on ONNX Runtime fp32 and LiteRT int8 "
                  "dynamic. RSS: Edit + KD LiteRT int8."),
-        label="tab:hybrid")
+        label="tab:hybrid", wide=True)
     return path
 
 
@@ -190,7 +193,7 @@ def errors_table(out_dir: Path) -> Path:
                  f"errors of the edit classifier. {oov} of its {len(main)} errors need an edit "
                  f"script outside its vocabulary; {all_wrong} test pairs are wrong in all five "
                  "models."),
-        label="tab:errors")
+        label="tab:errors", wide=True)
     return path
 
 
@@ -204,13 +207,84 @@ def error_examples_table(out_dir: Path) -> Path:
         path, ["Category", "Word", "Gold", "Edit+KD", "LSTM+KD", "POS"], rows, "llllll",
         caption=("Test errors of the deployed model (Edit+KD, 500k), sampled with a fixed seed "
                  "across categories, with the distilled LSTM's output for comparison."),
-        label="tab:error-examples")
+        label="tab:error-examples", wide=True)
+    return path
+
+
+SWEEP_SIZES = [("500000", "0.5M"), ("1000000", "1M"), ("2000000", "2M"), ("5000000", "5M")]
+ABLATION = [("lstm_1M_s13", "lstm", "BiLSTM enc. + LSTM dec."),
+            ("char_cnn_1M_s13", "char_cnn", "CNN enc. + LSTM dec."),
+            ("edit_1M_s13", "edit", "CNN enc. + edit classes")]
+EXPANSION = [("lstm", "LSTM"), ("lstm_exp", "LSTM + reviewed"), ("lstm_kd", "LSTM + KD"),
+             ("lstm_kd_exp", "LSTM + KD + reviewed"), ("edit", "Edit"),
+             ("edit_exp", "Edit + reviewed"), ("edit_kd", "Edit + KD"),
+             ("edit_kd_exp", "Edit + KD + reviewed")]
+
+
+def mean_std(stats: tuple[float, float, int]) -> str:
+    return f"{100 * stats[0]:.1f} $\\pm$ {100 * stats[1]:.1f}"
+
+
+def sweep_table(out_dir: Path) -> Path:
+    rows_in = read_csv("m3_sweep/accuracy.csv")
+    acc = seed_stats(rows_in, ("base", "target_params", "split"), "acc")
+    rows: list[list[str]] = []
+    for split, shown in (("test", "Test"), ("test_unseen", "Test unseen")):
+        if rows:
+            rows.append(["--"])
+        for b in COMPACT_BASES:
+            rows.append([shown if b == COMPACT_BASES[0] else "", BASE_NAMES[b],
+                         *[mean_std(acc[(b, size, split)]) for size, _ in SWEEP_SIZES]])
+    path = out_dir / "tab_sweep.tex"
+    latex_table(
+        path, ["Split", "Model", *[shown for _, shown in SWEEP_SIZES]], rows, "llrrrr",
+        caption=("Exact-match accuracy (\\%) by parameter budget, mean $\\pm$ std over 3 seeds. "
+                 "Seq2seq models decode greedily."),
+        label="tab:sweep", wide=True)
+    return path
+
+
+def ablation_table(out_dir: Path) -> Path:
+    sweep = read_csv("m3_ablation/accuracy.csv")
+    acc = seed_stats(sweep, ("base", "split"), "acc")
+    pi = [r for r in read_csv("m3_ablation/rpi5.csv") if r["batch"] == "1" and r["threads"] == "1"]
+    rows: list[list[str]] = []
+    for model, base, shown in ABLATION:
+        lat = {r["runtime"]: float(r["lat_med_ms"]) for r in pi if r["model"] == model}
+        test = mean_std(acc[(base, "test")]) if (base, "test") in acc else "--"
+        unseen = mean_std(acc[(base, "test_unseen")]) if (base, "test_unseen") in acc else "--"
+        rows.append([shown, test, unseen,
+                     *[f"{lat[rt]:.2f}" if rt in lat else "--"
+                       for rt in ("onnxruntime", "ncnn", "litert")]])
+    path = out_dir / "tab_ablation.tex"
+    latex_table(
+        path, ["Model (1M)", "Test", "Test unseen", "ONNX", "ncnn", "LiteRT"], rows, "lrrrrr",
+        caption=("Encoder ablation at 1M parameters: accuracy (\\%, mean $\\pm$ std over 3 seeds) "
+                 "and median latency per word on the Raspberry Pi 5 (ms, 1 thread, batch 1, "
+                 "seed 13, fp32)."),
+        label="tab:ablation", wide=True)
+    return path
+
+
+def expansion_table(out_dir: Path) -> Path:
+    acc = seed_stats(read_csv("m3_expansion/accuracy.csv"), ("base", "split"), "acc")
+    rows = [[shown, *[mean_std(acc[(b, s)]) for s in ("dev", "test", "test_unseen")]]
+            for b, shown in EXPANSION]
+    for i in (6, 4, 2):
+        rows.insert(i, ["--"])
+    path = out_dir / "tab_expansion.tex"
+    latex_table(
+        path, ["Training data (0.5M)", "Dev", "Test", "Test unseen"], rows, "lrrr",
+        caption=("Adding 2,583 human-reviewed Wikipedia words to the 3,153 gold training pairs "
+                 "(\\%, mean $\\pm$ std over 3 seeds). KD data rebuilt on the expanded gold."),
+        label="tab:expansion")
     return path
 
 
 def main(out_dir: Path = OUT) -> list[Path]:
     return [accuracy_table(out_dir), quant_table(out_dir), hybrid_table(out_dir),
-            errors_table(out_dir), error_examples_table(out_dir)]
+            errors_table(out_dir), error_examples_table(out_dir), sweep_table(out_dir),
+            ablation_table(out_dir), expansion_table(out_dir)]
 
 
 if __name__ == "__main__":

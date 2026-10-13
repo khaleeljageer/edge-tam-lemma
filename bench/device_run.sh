@@ -3,7 +3,7 @@
 # Installs onnxruntime + ncnn + ai-edge-litert in a local venv (no torch), records device
 # info, and benchmarks every export whose runtime imports. ExecuTorch exports need
 # torch on the device; they are included only if executorch is importable.
-# If the bundle has hybrid lookup tables (data/interim/hybrid/table_*.tsv), a second
+# If the bundle has hybrid lookup tables (data/interim/hybrid/table_<N>k.tsv), a second
 # pass benchmarks model + table on a frequency-weighted token stream (tel.hybrid).
 # HYBRID_ONLY=1 bash bench/device_run.sh <device>   skips the plain pass;
 # NO_HYBRID=1 skips the hybrid pass.
@@ -46,7 +46,7 @@ if [ "${HYBRID_ONLY:-0}" != 1 ]; then
         --threads $threads --models $models
     files="$files bench/results/${device}.csv"
 fi
-tables=$(ls data/interim/hybrid/table_*.tsv 2>/dev/null | sort -V || true)
+tables=$(ls data/interim/hybrid/table_*k.tsv 2>/dev/null | sort -V || true)
 if [ -n "$tables" ] && [ "${NO_HYBRID:-0}" != 1 ]; then
     PYTHONPATH=src .venv/bin/python bench/bench_runner.py --device "$device" \
         --threads $threads --models $models --weighted --tables none $tables \

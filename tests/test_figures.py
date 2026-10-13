@@ -39,3 +39,6 @@ def test_all_outputs_build(tmp_path):
     tex = (tmp_path / "tab_quant.tex").read_text(encoding="utf-8")
     assert r"\toprule" in tex and "LiteRT int8 dyn" in tex
     assert r"\ta{" in (tmp_path / "tab_error_examples.tex").read_text(encoding="utf-8")
+    assert r"\begin{table*}" in tex and tex.index(r"\caption") < tex.index(r"\begin{tabular}")
+    for name in ("tab_sweep", "tab_ablation", "tab_expansion"):
+        assert r"$\pm$" in (tmp_path / f"{name}.tex").read_text(encoding="utf-8")

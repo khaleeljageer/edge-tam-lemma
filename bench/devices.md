@@ -33,8 +33,15 @@ governor before each session. `bench/device_info.sh` prints most of these.
 
 ## android-phone
 
-_TBD_
+Out of scope (decided 2026-10-13). Tried a Samsung Galaxy A13 (SM-A135F,
+Exynos 850, 8× Cortex-A55 at 2.0 GHz, 3.8 GB RAM, Android 14): it runs a 32-bit
+Android build (`uname -m` armv8l, ABIs `armeabi-v7a` only), so Termux and
+proot Debian are 32-bit too and pip has no onnxruntime / ai-edge-litert / ncnn
+wheels for it (`device_run.sh` fell back to building numpy from source and found
+no runtime). Reaching it would need native armeabi-v7a builds of the runtimes
+and a C++ port of the decoding loop. The Pi 5's Cortex-A76 cores stand in for
+mid-range phone CPUs; noted as a limitation in the paper.
 
 ## qualcomm-auto-board
 
-_TBD (if feasible)_
+Out of scope (decided 2026-10-13).
