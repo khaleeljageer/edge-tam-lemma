@@ -325,7 +325,8 @@ unmeasured warm-up words; it is repeated five times and the median is
 reported. We measure with one thread and with all cores, and with batch 1
 (interactive use) and 64 (bulk processing; latency per word is the batch time
 divided by 64). We also record peak resident memory (RSS), model size on disk
-and cold start (process start to first lemma). For the hybrid runs, each test
+and cold start (process start to first lemma). Accuracy and agreement on the
+device are computed with batches of 64. For the hybrid runs, each test
 word is repeated by its frequency in the UD corpus and the stream shuffled with
 a fixed seed, as a stand-in for running text; we report token accuracy and mean
 time per token.
@@ -433,7 +434,11 @@ character. On the Pi, LiteRT with dynamic int8 is the fastest variant of both:
 0.29~ms per word for the edit classifier (four threads) and 1.87~ms for the
 LSTM (one thread), with 100\% and 99.9\% agreement with the fp32 model and at
 most 0.2 points of accuracy lost. Quantization shrinks the models 3.6 and 2.8
-times, to 538 and 796~KB. The Pareto front on the Pi runs from the int8 edit
+times, to 538 and 796~KB. Dynamic quantization computes activation scales from
+the words in each call, so its output depends slightly on how words are
+batched: with ONNX Runtime, the edit classifier scores 70.8\% in batches of 64
+and 71.2\% one word at a time, and the LSTM 72.8\% and 72.5\%; static
+quantization gives the same output at any batch size. The Pareto front on the Pi runs from the int8 edit
 classifier (0.29~ms, 71.0\%) to the int8 LSTM (1.87~ms, 72.5\%).
 
 The effect of quantization depends on the platform. Dynamic int8 in ONNX

@@ -121,8 +121,9 @@ def quant_table(out_dir: Path) -> Path:
         rows, "llrrrrrlr",
         caption=("Post-training INT8 quantization. Median latency per word in ms (batch 1 "
                  "unless noted); Agree = word-level agreement with the fp32 PyTorch model on "
-                 "test. int8 dyn: int8 weights, activations quantized per call; int8 static: "
-                 "calibrated QDQ on Conv/MatMul/Gemm."),
+                 "test, both with batches of 64. int8 dyn: int8 weights, activations quantized "
+                 "per call (output varies slightly with batching); int8 static: calibrated QDQ "
+                 "on Conv/MatMul/Gemm."),
         label="tab:quant", wide=True)
     return path
 
