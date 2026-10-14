@@ -143,3 +143,8 @@ cd paper && latexmk -xelatex main.tex              # manuscript (Sadhana class, 
 | Size sweep table | `tables.py` (`tab_sweep`) | `m3_sweep/accuracy.csv` |
 | Encoder ablation table | `tables.py` (`tab_ablation`) | `m3_ablation/accuracy.csv`, `m3_ablation/rpi5.csv` |
 | Data expansion table | `tables.py` (`tab_expansion`) | `m3_expansion/accuracy.csv` |
+
+## 8. Release
+
+Trained models and lookup tables for the GitHub release (`docs/models.md`):
+`bash scripts/release/make_release.sh v1.0` → `bench/tmp/release/v1.0/`.
