@@ -1,6 +1,9 @@
-"""Second-annotator check of the reviewed expansion batch (inter-annotator agreement).
+"""Re-annotation check of the reviewed expansion batch: agreement between two passes.
 
-    uv run python scripts/data/agreement.py sample     # sheets for the second annotator
+The second pass can be by another annotator (inter-annotator agreement) or by the
+same one, blind and some days later (intra-annotator consistency; used here).
+
+    uv run python scripts/data/agreement.py sample     # sheets for the second pass
     # ... the annotator fills them in (Excel / LibreOffice, UTF-8 CSV) ...
     uv run python scripts/data/agreement.py score      # bench/results/m3_expansion/agreement.csv
 
@@ -18,7 +21,7 @@ lemma.
 `score` compares the filled lemma sheet with the first annotator's lemmas:
 exact agreement (after NFC) overall and per status, plus Cohen's kappa on the
 derived binary decision "the lemma is the word itself" vs "the word is
-reduced". Rows the second annotator left empty are not counted.
+reduced". Rows left empty in the second pass are not counted.
 Sheets are UTF-8 with a byte-order mark so spreadsheet programs show Tamil text.
 """
 

@@ -497,19 +497,17 @@ Noto Serif Tamil) and `\input`s the generated tables and figures from
 `bench/results/m3_ablation/accuracy.csv`, written by `tel.sweep --csv`, plus Pi
 latency) and `tab_expansion`. Figures are also written as 300 dpi PNG/TIFF.
 `paper/order_refs.py` keeps the `\bibitem`s in citation order (tested).
-References checked online; `%VERIFY` marks three entries still to confirm.
-Open (`\todo{}`): speaker-number source, more Tamil/Dravidian related work,
-second annotator, manual check of the error examples, repository URL, code
-licence, funding, AI-use statement. Not compiled yet (no TeX on the dev
-machine). Test clean for the distilled students (seed 13) added to
+References checked online (30); `%VERIFY` marks six entries still to confirm.
+Open (`\todo{}`): the re-annotation numbers and the manual check of the error
+examples. Test clean for the distilled students (seed 13) added to
 `accuracy_baselines.csv` (`collect_runs.py`): LSTM+KD 72.9, Edit+KD 70.8,
 teacher 69.3. `docs/reproduce.md` lists the commands behind every result.
 Compiled 2026-10-14 (XeLaTeX): 9 pages, no overfull boxes (tables are scaled to
-the column with `adjustbox`). Second annotator (a Tamil professor, Dr. Revathi):
-`scripts/data/agreement.py sample` wrote a blind, status-stratified 200-word
-sheet and the 15 error examples to `data/annotation/agreement/` (instructions in
+the column with `adjustbox`). Re-annotation check (2026-10-14: no second annotator, so the author
+re-annotates blind = intra-annotator consistency): `scripts/data/agreement.py
+sample` wrote a blind, status-stratified 200-word sheet and the 15 error examples to `data/annotation/agreement/` (instructions in
 its README, rules in `docs/annotation_guidelines.md`); `score` writes
-`bench/results/m3_expansion/agreement.csv`. Code licence: GPL-3.0 (`LICENSE`).
+`bench/results/m3_expansion/agreement.csv`. Licence: CC BY-NC-SA 4.0 for code, models and data (`LICENSE`); repository https://github.com/khaleeljageer/edge-tam-lemma.
 
 **Devices (2026-10-13).** Final device set: Raspberry Pi 5 (ARM edge) and the
 desktop (x86 reference); Android phone and Qualcomm board dropped (research plan
