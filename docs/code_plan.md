@@ -503,11 +503,18 @@ examples. Test clean for the distilled students (seed 13) added to
 `accuracy_baselines.csv` (`collect_runs.py`): LSTM+KD 72.9, Edit+KD 70.8,
 teacher 69.3. `docs/reproduce.md` lists the commands behind every result.
 Compiled 2026-10-14 (XeLaTeX): 9 pages, no overfull boxes (tables are scaled to
-the column with `adjustbox`). Re-annotation check (2026-10-14: no second annotator, so the author
-re-annotates blind = intra-annotator consistency): `scripts/data/agreement.py
+the column with `adjustbox`). Second annotator (2026-10-14: Dr. Revathi, a Tamil professor, agreed;
+inter-annotator agreement): `scripts/data/agreement.py
 sample` wrote a blind, status-stratified 200-word sheet and the 15 error examples to `data/annotation/agreement/` (instructions in
 its README, rules in `docs/annotation_guidelines.md`); `score` writes
 `bench/results/m3_expansion/agreement.csv`. Licence: CC BY-NC-SA 4.0 for code, models and data (`LICENSE`); repository https://github.com/khaleeljageer/edge-tam-lemma.
+
+**M5 step 4 — release and submission files (2026-10-14).**
+`scripts/release/make_release.sh` packs the deployed students (all exports),
+the teacher, the lookup tables and the Wikipedia word list into deterministic
+archives for GitHub release v1.0 (`docs/models.md`; unpacked copies lemmatize
+correctly). Manuscript: list of symbols (`nomenclature`); cover letter draft in
+`paper/cover_letter.md`.
 
 **Devices (2026-10-13).** Final device set: Raspberry Pi 5 (ARM edge) and the
 desktop (x86 reference); Android phone and Qualcomm board dropped (research plan

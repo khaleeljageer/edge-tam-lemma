@@ -11,7 +11,8 @@ uv run python scripts/data/build_ud.py      # build data/processed/*.tsv
 
 See `tamil-edge-lemmatizer-plan.md` and `docs/code_plan.md`.
 
-Reproducing every result, table and figure: `docs/reproduce.md`.
+Reproducing every result, table and figure: `docs/reproduce.md`. Trained models
+and lookup tables are attached to the GitHub release (`docs/models.md`).
 
 ## License
 
