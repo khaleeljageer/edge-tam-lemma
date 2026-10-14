@@ -206,11 +206,11 @@ with a corrected lemma; 39 were rejected and 131 left undecided. The suggestion
 was kept for 98.7\% of agree, 83.0\% of majority and 51.6\% of conflict rows,
 close to the dev estimate. After dropping pairs whose lemma is a dev or test
 lemma, 2,583 pairs extend the training set to 5,736. The reviewed words cover
-22.7\% of the running tokens of Tamil Wikipedia. To measure agreement, a second
-annotator, a professor of Tamil, independently lemmatized a sample of 200 of the
-accepted words, drawn in proportion to the three groups, following the same
-guidelines and without seeing the first annotation; the two agree on
-\todo{X}\% of the words (\todo{per group}).
+22.7\% of the running tokens of Tamil Wikipedia. To measure the consistency of the labels, the annotator re-lemmatized a sample
+of 200 of the accepted words some days later, drawn in proportion to the three
+groups, without seeing the first annotation or the suggestions; the two passes
+agree on \todo{X}\% of the words (\todo{per group}). This measures
+intra-annotator consistency, not agreement between annotators.
 
 % ---------------------------------------------------------------------------
 \section{Models and methods}
@@ -509,7 +509,8 @@ cores are common in mid-range phones, but Android runtime builds were not
 measured, and low-end phones such as the Samsung Galaxy A13 still ship 32-bit
 Android, for which the Python packages of these runtimes have no builds;
 reaching them needs native runtime builds. The reviewed expansion was annotated by one
-person, with a second annotator on a sample only. We do not use sentence context, which would resolve ambiguous forms.
+person; we report the consistency of a repeated annotation, not agreement
+between annotators. We do not use sentence context, which would resolve ambiguous forms.
 
 % ---------------------------------------------------------------------------
 \section{Conclusions}
@@ -524,23 +525,18 @@ edit classifier. With a 50,000-word lookup table in front, it processes about
 results show that accurate Tamil lemmatization fits comfortably on low-power
 hardware, and that data, not model size, is what limits it today.
 
-\section*{Acknowledgements}
-
-The author thanks Dr. Revathi \todo{full name and affiliation} for the second
-annotation and for checking the error examples.
-
 \section*{Declarations}
 
 \paragraph{Data and code availability.}
-The code, data splits and trained models are available at
-\todo{repository URL}. The code is released under the GNU General Public
-License v3.0. The word--lemma pairs derived from UD Tamil-TTB inherit its
-CC BY-NC-SA 3.0 licence, so the released dataset is CC BY-NC-SA; the reviewed
-Wikipedia words are CC BY-SA.
+The code, data splits, reviewed annotations and trained models are
+available at \url{https://github.com/khaleeljageer/edge-tam-lemma} under the
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 licence
+(CC BY-NC-SA 4.0). The non-commercial term follows from UD Tamil-TTB
+(CC BY-NC-SA 3.0), from which most word--lemma pairs are derived.
 
 \paragraph{Competing interests.} The author declares no competing interests.
 
-\paragraph{Funding.} \todo{None, or the funding source.}
+\paragraph{Funding.} None.
 
 \paragraph{Use of AI tools.} Claude Code (Anthropic), with the model Claude
 Opus 5.5, was used for programming assistance, for running the experiment
