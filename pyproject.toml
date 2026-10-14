@@ -2,7 +2,9 @@
 name = "tel"
 version = "0.1.0"
 description = "Compact neural lemmatization for Tamil on edge devices"
-authors = [{ name = "Khaleel Jageer" }]
+authors = [{ name = "SyedKhaleel Jageer", email = "jskcse4@gmail.com" }]
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.0",
@@ -22,9 +24,13 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+# Figure and table scripts in paper/figures/.
+paper = [
+    "matplotlib>=3.9",
+]
 
 [tool.uv]
-default-groups = ["dev", "export"]
+default-groups = ["dev", "export", "paper"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }

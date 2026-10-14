@@ -3,9 +3,15 @@
     uv run python -m tel.distill --teacher runs/teacher_lstm \\
         --extra data/interim/wiki_freq.tsv --top 20000 --out data/distill/teacher_lstm_wiki20k
 
+    uv run python -m tel.distill --teacher runs/teacher_lstm --gold data/expanded/train.tsv \\
+        --extra data/interim/wiki_freq.tsv --top 20000 --out data/distill/teacher_lstm_wiki20k_exp
+
 Writes <out>/train.tsv (tel Pair format) containing
   * the gold training pairs (mode "gold+teacher", default), or the teacher's
-    own predictions for them (mode "teacher", pure sequence-level KD), plus
+    own predictions for them (mode "teacher", pure sequence-level KD); --gold
+    replaces the teacher's train.tsv, e.g. with the human-reviewed expanded set
+    (scripts/data/expand_candidates.py import), whose words are then not
+    teacher-labelled again, plus
   * teacher-labelled extra words (most frequent first from a word list),
 and <out>/distill_stats.json. Students point `data.train_file` at it; dev and
 test still come from `data.dir`.
@@ -60,6 +66,7 @@ def main() -> None:
     ap.add_argument("--mode", choices=["gold+teacher", "teacher"], default="gold+teacher")
     ap.add_argument("--min-token-prob", type=float, default=0.9)
     ap.add_argument("--beam", type=int, default=4)
+    ap.add_argument("--gold", type=Path, help="gold pairs (default: <teacher data.dir>/train.tsv)")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 
@@ -68,7 +75,7 @@ def main() -> None:
         raise SystemExit("teacher must be a seq2seq model")
     teacher = Seq2SeqLemmatizer(model, tok, cfg.data.max_len, beam=args.beam)
     data = Path(cfg.data.dir)
-    gold = read_tsv(data / "train.tsv")
+    gold = read_tsv(args.gold or data / "train.tsv")
     held_words = {p.word for s in ("dev", "test") for p in read_tsv(data / f"{s}.tsv")}
     held_lemmas = {line.strip() for s in ("dev", "test")
                    for line in (data / "splits" / f"{s}.txt").read_text(encoding="utf-8")
@@ -76,7 +83,8 @@ def main() -> None:
     name = args.teacher.name
     stats: dict[str, int | float | str] = {"teacher": name, "mode": args.mode,
                                            "min_token_prob": args.min_token_prob,
-                                           "gold": len(gold)}
+                                           "gold": len(gold),
+                                           "gold_file": str(args.gold or data / "train.tsv")}
 
     pairs: list[Pair] = []
     if args.mode == "gold+teacher":

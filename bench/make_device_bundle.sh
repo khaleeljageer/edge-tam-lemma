@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 mkdir -p bench/tmp
 # Optional arguments: run names to include (default: every run with exports).
 roots=$( [ $# -gt 0 ] && printf 'runs/%s ' "$@" || echo runs )
-exports=$(find $roots -path '*/export/onnx' -o -path '*/export/ncnn' -o -path '*/export/ncnn-fp16' -o -path '*/export/tflite' -o -path '*/export/pte' | sort)
+exports=$(find $roots -path '*/export/onnx' -o -path '*/export/onnx-int8' -o -path '*/export/onnx-int8dyn' -o -path '*/export/ncnn' -o -path '*/export/ncnn-fp16' -o -path '*/export/tflite' -o -path '*/export/tflite-int8dyn' -o -path '*/export/pte' | sort)
 [ -n "$exports" ] || { echo "no exports under runs/; run tel.export first" >&2; exit 1; }
 # Record the code version: commit, plus "-dirty" if there are uncommitted changes.
 sha=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -21,6 +21,7 @@ tar czf bench/tmp/device_bundle.tar.gz \
     --exclude='__pycache__' \
     src/tel bench/bench_runner.py bench/device_run.sh bench/device_info.sh bench/BUNDLE_VERSION \
     data/processed/test.tsv data/processed/splits/train.txt \
+    $(ls data/interim/hybrid/table_*k.tsv 2>/dev/null || true) \
     $exports
 rm bench/BUNDLE_VERSION
 echo "wrote bench/tmp/device_bundle.tar.gz (code $sha, $(du -h bench/tmp/device_bundle.tar.gz | cut -f1))"

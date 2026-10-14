@@ -1,0 +1,706 @@
+% Manuscript for Sadhana (Indian Academy of Sciences / Springer), regular paper.
+% Class file: paper/sadhana.cls (from www.ias.ac.in/Journals/Sadhana/Information_for_Authors).
+% Build with XeLaTeX (Tamil text), after generating the tables and figures:
+%   uv run python paper/figures/make_all.py
+%   cd paper && latexmk -xelatex main.tex
+% Every number comes from bench/results/ (docs/reproduce.md). \todo{} marks open items;
+% %VERIFY marks reference details not yet checked against the publisher's record.
+% Sadhana numbers references in order of first citation: after adding a citation, run
+%   uv run python paper/order_refs.py
+\documentclass{sadhana}
+\usepackage{graphicx,amsmath,bm}
+\usepackage{booktabs}
+\usepackage{adjustbox}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{fontspec}
+\setmainfont{TeX Gyre Termes}
+\newfontfamily\tamilfont{Noto Serif Tamil}[Script=Tamil, Scale=0.9]
+\newcommand{\ta}[1]{{\tamilfont #1}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\graphicspath{{figures/out/}}
+\setlength{\emergencystretch}{1.5em}
+
+\begin{document}
+
+\title{Compact neural lemmatization for Tamil on edge devices}
+
+\author{SyedKhaleel Jageer\textsuperscript{*}}
+\affilOne{Independent Researcher, India\\ \texttt{jskcse4@gmail.com}}
+
+\twocolumn[{
+\maketitle
+
+\begin{abstract}
+Lemmatization maps an inflected word to its dictionary form. Tamil is
+agglutinative: nouns and verbs carry long suffix chains and stems change at
+suffix boundaries, which makes lemmatization essential for search, spelling and
+text analysis, and makes rule-based tools brittle. We study how small and fast
+a Tamil lemmatizer can be on low-power hardware while staying close to a large
+model. We build a word--lemma dataset from the two Universal Dependencies Tamil
+treebanks, split by lemma so that 75\% of the test pairs have lemmas never seen
+in training. Across 0.5M--5M parameters, accuracy does not grow with size:
+with 3,153 training pairs, data rather than capacity is the limit. Sequence-level
+distillation from a 15.8M-parameter BiLSTM teacher on 9,012 Wikipedia words
+helps every model; a distilled 0.5M-parameter edit-script classifier reaches
+70.9\% exact match (71.4\% on unseen lemmas), within 1.9 points of the teacher
+overall and 2.9 points ahead of it on unseen lemmas. Quantized to int8 it is a
+538~KB model that lemmatizes a word in 0.29~ms on a Raspberry Pi~5 with 100\%
+agreement with the full-precision model. A lookup table of the 50,000 most
+frequent Wikipedia word forms in front of the model raises token accuracy on
+frequency-weighted text from 77.8\% to 82.5\% and the speed to about 21,000
+tokens per second, in 56~MB of memory. Code, data splits, models and the
+scripts behind every table are released.
+\end{abstract}
+
+\msinfo{}{}{}
+
+\keywords{Tamil; lemmatization; knowledge distillation; quantization; edge
+computing; low-resource languages}
+}]
+
+\corres
+\markboth{SyedKhaleel Jageer}{Compact neural lemmatization for Tamil}
+
+% ---------------------------------------------------------------------------
+\section{Introduction}
+
+Tamil is the mother tongue of about 69 million people in India
+alone~\cite{census2011} and an official language of Sri Lanka and Singapore,
+yet like most of the world's languages it has few annotated resources for
+language technology~\cite{joshi2020}. It is also
+morphologically rich. A Tamil noun or verb takes a chain of suffixes for case,
+number, person, tense, mood and discourse clitics, so that a single lemma such
+as \ta{வீடு} (house) appears as \ta{வீட்டில்}, \ta{வீடுகளுக்கு} or
+\ta{வீட்டிலிருந்தே}, and the stem itself changes where suffixes attach
+(sandhi). Search, spell checking, text classification and corpus analysis all
+need these forms reduced to their lemma.
+
+Existing Tamil lemmatizers are either rule-based finite-state analysers, which
+are precise on the words their lexicon covers but fall back to guessers
+elsewhere~\cite{thamizhimorph}, or neural models built for servers and general
+pipelines~\cite{stanza, tamillemmapkg}. Many uses of Tamil text, however, are
+on phones, kiosks and small embedded boards: offline, private and cheap. On such
+devices a model's size, latency and memory matter as much as its accuracy, and
+little is known about this trade-off for Tamil.
+
+This paper asks how small and fast a Tamil lemmatizer can be on low-power
+hardware while staying close to the accuracy of a large model. Its
+contributions are:
+\begin{enumerate}
+\item a word--lemma dataset from the Universal Dependencies (UD) Tamil
+  treebanks with a lemma-disjoint split, so that most of the test set measures
+  generalization to lemmas never seen in training, plus 2,583 human-reviewed
+  pairs for frequent Wikipedia words (section~\ref{sec:data});
+\item a controlled comparison of compact character models (an attention LSTM,
+  a transformer and an edit-script classifier, 0.5M--5M parameters, three seeds
+  each), with sequence-level knowledge distillation and an encoder ablation
+  (sections~\ref{sec:method} and~\ref{sec:results});
+\item a benchmark of accuracy against latency, model size and memory on a
+  Raspberry Pi~5 across three inference runtimes and int8 quantization, and a
+  hybrid lookup + neural scheme for running text (section~\ref{sec:results}).
+\end{enumerate}
+All numbers in this paper are produced by scripts in the released repository
+from fixed seeds.
+
+% ---------------------------------------------------------------------------
+\section{Related work}
+\label{sec:related}
+
+\subsection{Tamil morphological analysis and lemmatization}
+
+Early computational work on Tamil word structure targeted morphological
+analysis and stemming. Anand Kumar et al.~\cite{anandkumar2010} cast Tamil
+morphological analysis as sequence labelling with kernel methods, and rule-based
+affix-stripping stemmers have been built for Tamil information
+retrieval~\cite{thangarasu2013}. A stemmer, however, only removes affixes and
+need not return a dictionary form, which a lemmatizer must. ThamizhiMorph~\cite{thamizhimorph}
+is a finite-state morphological analyser and generator for Tamil built with
+Foma, with lexicons for nouns, verbs and other word classes and guessers for
+unknown words; it was evaluated on the UD Tamil treebank, among other data.
+Neural pipelines trained on UD treebanks, such as Stanza~\cite{stanza},
+include a Tamil lemmatizer trained on the Tamil Treebank, and the Tamil
+dependency parser ThamizhiUDp takes its lemmas from Stanza~\cite{thamizhiudp}.
+The \texttt{tamil-lemmatizer} Python package~\cite{tamillemmapkg} provides a
+neural lemmatizer trained on data that its documentation does not describe.
+For other Indian languages, lemmatizers have mostly been rule-based, for
+example for Hindi~\cite{paul2013}. We found no published study of compact or
+on-device lemmatization for Tamil or another Dravidian language.
+
+We use the two Tamil treebanks of Universal Dependencies~\cite{nivre2020}: the
+Tamil Treebank (TTB)~\cite{ttb}, a Prague-style dependency treebank converted
+to UD, and the Modern Written Tamil Treebank (MWTT)~\cite{mwtt}, built from the
+example sentences of a Tamil grammar. Sarveswaran~\cite{sarveswaran2024}
+reviews how Tamil treebanks are built, and the recent Aalamaram
+treebank~\cite{aalamaram} adds about 10,000 sentences with part-of-speech,
+morphological and dependency annotation, a possible source of more training
+data.
+
+\subsection{Neural lemmatization}
+
+Lemmatization has been modelled as classification over edit operations or edit
+trees that transform a word into its lemma~\cite{morfette, lemming} and as
+character-level sequence-to-sequence transduction~\cite{lematus, kanerva}.
+UDPipe~2~\cite{udpipe} predicts a lemma rule per word jointly with tagging and
+parsing. The SIGMORPHON 2019 shared task evaluated lemmatization in context
+across 66 languages~\cite{sigmorphon2019}. Our seq2seq models follow the
+attention encoder--decoder design~\cite{bahdanau} with LSTM~\cite{hochreiter} or
+transformer~\cite{vaswani} layers; our edit-script classifier follows the
+edit-operation line, with scripts tailored to suffixal morphology
+(section~\ref{sec:edit}).
+
+\subsection{Efficient models for devices}
+
+Knowledge distillation trains a small student on the outputs of a larger
+teacher~\cite{hinton}; sequence-level distillation trains the student on the
+teacher's decoded output sequences, which suits transduction
+tasks~\cite{kimrush}. Integer quantization stores weights, and optionally
+activations, in 8 bits for smaller and faster inference on CPUs~\cite{jacob}.
+Treviso et al.~\cite{treviso} survey these and other methods for efficient NLP.
+On-device inference runtimes include ONNX Runtime~\cite{onnxruntime},
+LiteRT (formerly TensorFlow Lite)~\cite{litert} and ncnn~\cite{ncnn}. To our
+knowledge, no previous work measures the accuracy--efficiency trade-off of
+Tamil lemmatization on edge hardware.
+
+% ---------------------------------------------------------------------------
+\section{Data}
+\label{sec:data}
+
+\subsection{Gold word--lemma pairs}
+
+We take every written word with a Tamil-script form and lemma from UD
+Tamil-TTB~\cite{ttb} (CC BY-NC-SA 3.0) and Tamil-MWTT~\cite{mwtt}
+(CC BY-SA 4.0), after Unicode NFC normalization, and merge duplicate pairs. For
+multiword tokens the lemma comes from the first content part. The treebanks'
+own train/dev/test boundaries are ignored on purpose: we split by lemma. Lemmas
+are divided 80/10/10 into train, dev and test, so dev and test lemmas never
+occur in training; about 5\% of the training forms are then moved to dev and
+test as a ``seen-lemma'' part, so that both kinds of word are measured. This
+gives 3,153 training, 668 development and 692 test pairs. 517 of the test
+pairs (\emph{test unseen}) have lemmas absent from training. Stanza's Tamil
+model is trained on TTB, so for comparisons with it we also report \emph{test
+clean}, the 277 test words that do not occur in TTB's training section.
+
+\subsection{Unlabelled words}
+
+A word-frequency list from a pinned Tamil Wikipedia dump
+(\texttt{tawiki-20261001-pages-articles}, CC BY-SA) counts NFC-normalized words
+made only of Tamil letters, after stripping wiki markup. It supplies unlabelled
+words for distillation (section~\ref{sec:kd}) and the frequent forms for the
+lookup tables (section~\ref{sec:hybrid}).
+
+\subsection{Reviewed expansion}
+\label{sec:expansion}
+
+To test whether more gold data helps, we labelled the 3,000 most frequent
+Wikipedia words that occur in none of train, dev or test. For each word, four
+systems proposed a lemma: ThamizhiMorph, the teacher and the two distilled
+students of section~\ref{sec:kd}; the majority vote was shown as a suggestion,
+with the row marked \emph{agree} (4/4), \emph{majority} (3/4) or
+\emph{conflict}. Before the review, we measured on dev how often the suggestion
+is right: 93.7\% for agree rows, 79.8\% for majority rows and 49.4\% for
+conflict rows (76.8\% overall, against 73.9\% for the best single source). One
+annotator (the author) reviewed all rows: 2,830 were accepted, 413 of them
+with a corrected lemma; 39 were rejected and 131 left undecided. The suggestion
+was kept for 98.7\% of agree, 83.0\% of majority and 51.6\% of conflict rows,
+close to the dev estimate. After dropping pairs whose lemma is a dev or test
+lemma, 2,583 pairs extend the training set to 5,736. The reviewed words cover
+22.7\% of the running tokens of Tamil Wikipedia. To measure agreement, a second
+annotator, a professor of Tamil, independently lemmatized a sample of 200 of the
+accepted words, drawn in proportion to the three groups, following the same
+guidelines and without seeing the first annotation; the two agree on
+\todo{X}\% of the words (\todo{per group}).
+
+% ---------------------------------------------------------------------------
+\section{Models and methods}
+\label{sec:method}
+
+All models read Unicode codepoints after NFC normalization, for words up to 48
+codepoints (the 99.9th percentile of the data), and are implemented in PyTorch.
+Each model is defined by a parameter budget (0.5M, 1M, 2M or 5M); widths are
+scaled to meet it.
+
+\subsection{Sequence-to-sequence models}
+
+The \emph{LSTM} model has a character BiLSTM encoder~\cite{hochreiter} and an
+LSTM decoder with attention~\cite{bahdanau}. The \emph{transformer} is a
+pre-norm character encoder--decoder~\cite{vaswani} with learned positions and
+two layers. Both decode greedily on the device. For export, each model is split
+into an \texttt{encode} graph and a \texttt{decode\_step} graph, with the
+decoding loop in host code. The BiLSTM's backward direction reads each word
+reversed in place, so the encoder output does not depend on padding and
+fixed-length exported graphs reproduce training exactly. Masks are applied
+arithmetically and the in-place reversal is a multiplication by a permutation
+matrix, so that the graphs use only operators every runtime supports.
+
+\subsection{Edit-script classifier}
+\label{sec:edit}
+
+Tamil inflection is almost entirely suffixal, so most word--lemma pairs differ
+by a suffix rewrite. From each training pair we extract an edit script: the
+string removed from the end of the word and the string appended, plus, rarely,
+the same at the start. For example, \ta{மரங்கள்} $\rightarrow$ \ta{மரம்}
+removes \ta{ங்கள்} and appends \ta{ம்}. Removed strings are stored literally, so
+a script only applies to words that end with them; scripts that do not apply to
+a word are masked out in training and inference. A character CNN encoder, with
+positions counted from the end of the word, predicts one script per word. A
+word costs one forward pass and no decoder. The training data yields 703
+scripts (1,093 with the distillation data), which cover 90\% of the test
+pairs; this bounds the classifier's accuracy.
+
+\subsection{Teacher and distillation}
+\label{sec:kd}
+
+The teacher is a 15.8M-parameter BiLSTM attention model (embedding 256, hidden
+512, two layers) trained with label smoothing 0.1 and decoded with beam 4. For
+sequence-level distillation~\cite{kimrush}, it labels the 20,000 most frequent
+Wikipedia words. Three filters keep the test set honest and the labels clean:
+words that occur in dev or test are excluded; words whose predicted lemma is a
+dev or test lemma are dropped, so unseen lemmas stay unseen; and predictions
+with a per-token probability below 0.9 are dropped (on dev this keeps 48\% of
+the words at 90\% precision). The 9,012 remaining words are added to the gold
+training pairs, and students are trained on the union. For the edit classifier
+the teacher's lemma is converted to an edit script.
+
+\subsection{Export, runtimes and quantization}
+
+Trained models are exported to ONNX (run with ONNX Runtime~\cite{onnxruntime}),
+LiteRT~\cite{litert} and ncnn~\cite{ncnn}. ONNX graphs take a dynamic batch;
+LiteRT graphs are exported at fixed batch sizes 1 and 64, and ncnn graphs at
+batch 1. Every export stores PyTorch's predictions for the test words, so a
+device reports word-level agreement with PyTorch without needing PyTorch.
+
+We apply post-training int8 quantization~\cite{jacob} to the exported graphs:
+dynamic quantization (int8 weights, activations quantized at each call) for
+ONNX Runtime and LiteRT, and static quantization with quantize--dequantize
+nodes for ONNX Runtime, calibrated on the activations seen while lemmatizing
+training words. Static quantization is limited to convolution and matrix
+multiplication, so the additive masks stay in floating point.
+
+\subsection{Hybrid lookup}
+\label{sec:hybrid}
+
+Word frequencies in running text are highly skewed, so a small table of
+frequent forms can answer most tokens. A table maps the $N$ most frequent
+Wikipedia forms to a lemma: the gold training label if there is one, otherwise
+the majority vote of four systems (ThamizhiMorph, the teacher and the two
+distilled students), computed once, offline. On the device, a lookup costs one
+dictionary access and only misses reach the neural model. Misses are processed
+in batches; for runtimes with fixed batch sizes, the host times one call of each
+graph at start-up and splits each batch of misses into the cheapest
+combination of graph calls.
+
+% ---------------------------------------------------------------------------
+\section{Experimental setup}
+\label{sec:setup}
+
+\subsection{Training and evaluation}
+
+Models are trained with AdamW (learning rate $2\times10^{-3}$, weight decay
+0.01, batch 32, gradient clipping at 1.0), with early stopping on dev accuracy
+(patience 12, at most 80 epochs); the transformer uses warm-up, label smoothing
+0.1 and a longer schedule. Each configuration is trained with seeds 13, 14 and
+15, and we report the mean and standard deviation of exact-match accuracy. For
+deployment we use seed 13 of each distilled 0.5M model.
+
+The baselines are: the identity function (copy the word); a suffix stripper
+with rules for common Tamil suffixes; ThamizhiMorph~\cite{thamizhimorph},
+taking the first analysis of the first analyser in a fixed order and its
+guessers otherwise; Stanza~1.15~\cite{stanza}; and
+\texttt{tamil-lemmatizer}~0.0.2~\cite{tamillemmapkg}. All are run as external
+tools on the same words.
+
+\subsection{Devices and benchmark protocol}
+
+The edge device is a Raspberry Pi~5 (four Cortex-A76 cores at 2.4~GHz, 8~GB
+RAM, Debian 13, \texttt{performance} CPU governor, active cooling, no
+throttling recorded). The reference is a desktop with an AMD Ryzen~9 9900X
+(12 cores, 24 threads). Runtimes: ONNX Runtime 1.31, LiteRT 2.3 (2.2 on the
+desktop) and ncnn 1.0.20260526; the device needs no PyTorch.
+
+Each configuration (model, precision, runtime, threads, batch) runs in a fresh
+process on the 692 test words repeated to 10,000 in a fixed order, after 200
+unmeasured warm-up words; it is repeated five times and the median is
+reported. We measure with one thread and with all cores, and with batch 1
+(interactive use) and 64 (bulk processing; latency per word is the batch time
+divided by 64). We also record peak resident memory (RSS), model size on disk
+and cold start (process start to first lemma). For the hybrid runs, each test
+word is repeated by its frequency in the UD corpus and the stream shuffled with
+a fixed seed, as a stand-in for running text; we report token accuracy and mean
+time per token.
+
+% ---------------------------------------------------------------------------
+\section{Results}
+\label{sec:results}
+
+\input{figures/out/tab_accuracy}
+
+\subsection{Accuracy}
+
+Table~\ref{tab:accuracy} compares the baselines, the teachers and the compact
+models. Copying the word is right for 26.7\% of test pairs, and simple suffix
+rules reach 38.7\%. ThamizhiMorph reaches 55.4\%: it is 87--88\% accurate on
+the roughly 40\% of words its lexicon covers and 29--35\% on the rest, which
+go to its guessers. Stanza's 84.1\% is inflated by overlap with its training
+data: it scores about 96\% on test words that occur in TTB's training section
+and 65.3\% on test clean. On test clean, \texttt{tamil-lemmatizer} leads with
+82.7\%, ahead of our distilled LSTM (72.9\%), distilled edit classifier
+(70.8\%) and teacher (69.3\%, all seed 13); its training data is
+undocumented, so we cannot tell how much of test clean it has seen.
+
+Trained from scratch, the 0.5M LSTM (70.5\%) is within 2.3 points of the
+15.8M teacher (72.8\%). The edit classifier is 5.7 points behind the LSTM
+overall but only 0.5 behind on unseen lemmas. The transformer memorizes
+training lemmas but generalizes poorly at this data size (55.6\% on unseen
+lemmas), and the 7.4M transformer teacher is worse still. With distillation,
+the 0.5M LSTM (73.4\%) matches the teacher, and the 0.5M edit classifier is
+the best of our models on unseen lemmas (71.4\%).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{acc_vs_params}
+\caption{Test accuracy against parameters (mean $\pm$ std over 3 seeds), with
+and without distillation; horizontal lines are baselines.}
+\label{fig:params}
+\end{figure}
+
+\input{figures/out/tab_sweep}
+
+\subsection{Model size}
+
+Figure~\ref{fig:params} and table~\ref{tab:sweep} show accuracy across the four
+budgets. For every family accuracy is flat, or falls, from 0.5M to 5M
+parameters: the largest LSTM is 0.7 points below the smallest, and the
+transformer loses 3.6 points at 5M. With 3,153 training pairs, data and not
+capacity limits accuracy, and the smallest budget is the right one to deploy.
+
+\input{figures/out/tab_ablation}
+
+\subsection{Encoder ablation}
+
+The edit classifier differs from the LSTM in two ways: a CNN encoder instead of
+a BiLSTM, and a single classification instead of a decoder. To separate them,
+we trained a CNN encoder with the LSTM decoder at 1M parameters
+(table~\ref{tab:ablation}). It loses 1.9 points to the BiLSTM on test, and 2.0
+on unseen lemmas, where the edit classifier gains 1.1. Its speed gain depends
+on the runtime: on the Pi with one thread, it recovers about 80\% of the gap
+between the LSTM and the edit classifier on LiteRT, 40\% on ONNX Runtime and
+none on ncnn. The single-pass output, not the CNN encoder, explains both the
+edit classifier's speed on every runtime and its accuracy on unseen lemmas.
+
+\subsection{Distillation}
+
+Distillation improves every family at every size (table~\ref{tab:sweep}). The
+LSTM gains 0.8--2.9 points on test and 1.5--4.7 on unseen lemmas; the edit
+classifier gains 6.1--7.7 on test and 5.9--7.0 on unseen lemmas, and its gain
+does not shrink with size. The edit classifier gains most because the
+teacher-labelled words add 390 edit scripts and many more examples of the
+rarer ones. The error analysis (section~\ref{sec:errors}) shows which errors
+disappear.
+
+\input{figures/out/tab_expansion}
+
+\subsection{Human-reviewed expansion}
+
+Table~\ref{tab:expansion} adds the 2,583 reviewed pairs, 82\% more gold data,
+to the training set. The edit classifier gains 2.8 points on dev and 2.0 on
+test from scratch, and 1.0 and 0.8 with distillation; the LSTM gains on dev
+(0.7 and 1.0) but not on test. Only the edit classifier's dev gain from
+scratch clearly exceeds the variation between seeds. The reviewed words are
+frequent Wikipedia forms, the test words rarer treebank forms, so this data
+helps the models less than its size suggests. Its main use is the lookup table
+(section~\ref{sec:hybrid-results}), where it replaces voted labels with human
+ones.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{pareto}
+\caption{Accuracy against median batch-1 latency per word, best thread count
+per model, precision and runtime; the line is the Pareto front per device.}
+\label{fig:pareto}
+\end{figure*}
+
+\input{figures/out/tab_quant}
+
+\subsection{Speed, size and quantization}
+
+Figure~\ref{fig:pareto} plots accuracy against latency for every exported model
+on both devices, and table~\ref{tab:quant} details the two deployed models.
+The edit classifier is 3--6 times faster than the LSTM at the same budget,
+because it needs one forward pass instead of one decoder step per output
+character. On the Pi, LiteRT with dynamic int8 is the fastest variant of both:
+0.29~ms per word for the edit classifier (four threads) and 1.87~ms for the
+LSTM (one thread), with 100\% and 99.9\% agreement with the fp32 model and at
+most 0.2 points of accuracy lost. Quantization shrinks the models 3.6 and 2.8
+times, to 538 and 796~KB. The Pareto front on the Pi runs from the int8 edit
+classifier (0.29~ms, 71.0\%) to the int8 LSTM (1.87~ms, 72.5\%).
+
+The effect of quantization depends on the platform. Dynamic int8 in ONNX
+Runtime speeds up the edit classifier on the Pi (1.04 to 0.62~ms with one
+thread) but slows it down three times on the x86 desktop; static int8 helps on
+both. More threads help on the Pi's four cores but not on the desktop, where
+the models are too small to use 24 threads. ncnn uses the least memory (40~MB
+against 55--135~MB) and starts fastest (about 150~ms against up to 220~ms) but
+is slower than the best runtime for these models; its fp16 mode halves the
+model file but speeds up inference by at most 11\% on the Cortex-A76.
+
+\input{figures/out/tab_hybrid}
+
+\subsection{Hybrid lookup}
+\label{sec:hybrid-results}
+
+Table~\ref{tab:hybrid} puts lookup tables of increasing size in front of the
+distilled models. A 1,000-word table (45~KB) already answers 38\% of the test
+tokens, and 50,000 words (2.8~MB) answer 84\%; on Tamil Wikipedia itself the
+same tables cover 40\% and 82\% of tokens. Table answers are more accurate than
+the models on those tokens (86\% on test hits), so token accuracy rises from
+77.8\% to 82.5\% for the edit classifier and from 78.3\% to 83.2\% for the
+LSTM; on dev the edit classifier rises from 65.3\% to 74.2\%. At the same time
+the mean time per token on the Pi falls six-fold, to 0.048~ms for the int8 edit
+classifier, about 21,000 tokens per second, and memory stays at 56~MB. Cheap
+table lookups make the slower but more accurate LSTM practical as well:
+0.29~ms per token in int8 with the 50,000-word table.
+
+\input{figures/out/tab_errors}
+\input{figures/out/tab_error_examples}
+
+\subsection{Error analysis}
+\label{sec:errors}
+
+We sorted the test errors of five models into six categories with rules over
+Tamil graphemes (table~\ref{tab:errors}); table~\ref{tab:error-examples} shows
+examples. The commonest errors leave the inflected form unchanged, or miss the
+stem-final letter that sandhi alters (\ta{வாழவும்} $\rightarrow$ \ta{வாழு}
+instead of \ta{வாழ்}). Distillation removes nearly a third of the edit
+classifier's unchanged forms (89 to 62) and some of its stem-final errors (50
+to 42). About 40 errors per model are words the treebank keeps as they are,
+such as adverbs, postpositions and numerals (\ta{முப்பது}, thirty), which the
+models over-reduce. 69 of the distilled edit classifier's 201 errors need an
+edit script outside its vocabulary, a hard limit the LSTM does not have. 86
+test pairs are wrong for all five models; some of them look like annotation
+noise (\ta{பங்கேற்க} $\rightarrow$ gold \ta{பங்கேல்}).
+\todo{Manual check of the 15 examples and their categories.}
+
+% ---------------------------------------------------------------------------
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Recommendations}
+
+For interactive use on a small device, the distilled edit classifier in int8
+is the clear choice: 0.29~ms per word, 538~KB and the best accuracy on unseen
+lemmas. Where accuracy on known lemmas matters more than speed, the distilled
+LSTM is 1.7 points more accurate overall at about six times the cost. For
+running text, a frequency table in front of either model is the largest single
+gain in both accuracy and speed; a 5,000--10,000-word table (0.25--0.5~MB)
+already gives more than half of the accuracy gain. Because model size does not
+buy accuracy here, more and more varied training data, distilled or
+human-labelled, is the most promising direction.
+
+\subsection{Limitations}
+
+The gold data is small, 3,153 training pairs from two treebanks, so all models
+are data-limited and the test set follows the treebanks' conventions, for
+example keeping many adverbs and postpositions unreduced. The hybrid
+evaluation weights test words by treebank frequency, a stand-in for running
+text from another domain. We benchmark one ARM device. The Pi~5's Cortex-A76
+cores are common in mid-range phones, but Android runtime builds were not
+measured, and low-end phones such as the Samsung Galaxy A13 still ship 32-bit
+Android, for which the Python packages of these runtimes have no builds;
+reaching them needs native runtime builds. The reviewed expansion was annotated by one
+person, with a second annotator on a sample only. We do not use sentence context, which would resolve ambiguous forms.
+
+% ---------------------------------------------------------------------------
+\section{Conclusions}
+
+A 0.5M-parameter edit-script classifier, distilled from a 15.8M-parameter
+teacher and quantized to int8, lemmatizes Tamil in 0.29~ms per word in 538~KB
+on a Raspberry Pi~5, within two points of the teacher overall and ahead of it
+on lemmas never seen in training. With 3k training pairs, accuracy does not
+improve from 0.5M to 5M parameters, while distillation adds 6--8 points to the
+edit classifier. With a 50,000-word lookup table in front, it processes about
+21,000 tokens per second at 82.5\% token accuracy in 56~MB of memory. These
+results show that accurate Tamil lemmatization fits comfortably on low-power
+hardware, and that data, not model size, is what limits it today.
+
+\section*{Acknowledgements}
+
+The author thanks Dr. Revathi \todo{full name and affiliation} for the second
+annotation and for checking the error examples.
+
+\section*{Declarations}
+
+\paragraph{Data and code availability.}
+The code, data splits and trained models are available at
+\todo{repository URL}. The code is released under the GNU General Public
+License v3.0. The word--lemma pairs derived from UD Tamil-TTB inherit its
+CC BY-NC-SA 3.0 licence, so the released dataset is CC BY-NC-SA; the reviewed
+Wikipedia words are CC BY-SA.
+
+\paragraph{Competing interests.} The author declares no competing interests.
+
+\paragraph{Funding.} \todo{None, or the funding source.}
+
+\paragraph{Use of AI tools.} Claude Code (Anthropic), with the model Claude
+Opus 5.5, was used for programming assistance, for running the experiment
+scripts and for drafting the manuscript text. AI tools were not used to generate or alter data or results: all
+numbers are produced by the released scripts from the stated data, and the
+author checked every experiment, number and claim.
+
+\begin{thebibliography}{99}
+
+\bibitem{census2011}
+Office of the Registrar General and Census Commissioner, India 2018 Census of
+India 2011: Language, India, States and Union Territories (Table C-16).
+Paper 1 of 2018, New Delhi. %VERIFY title
+
+\bibitem{joshi2020}
+Joshi P, Santy S, Budhiraja A, Bali K and Choudhury M 2020 The state and fate
+of linguistic diversity and inclusion in the NLP world. In: \emph{Proceedings
+of the 58th Annual Meeting of the Association for Computational Linguistics},
+pp. 6282--6293.
+
+\bibitem{thamizhimorph}
+Sarveswaran K, Dias G and Butt M 2021 ThamizhiMorph: A morphological parser
+for the Tamil language. \emph{Mach. Transl.} 35: 37--70.
+
+\bibitem{stanza}
+Qi P, Zhang Y, Zhang Y, Bolton J and Manning C D 2020 Stanza: A Python natural
+language processing toolkit for many human languages. In: \emph{Proceedings of
+the 58th Annual Meeting of the Association for Computational Linguistics:
+System Demonstrations}, pp. 101--108.
+
+\bibitem{tamillemmapkg}
+tamil-lemmatizer 0.0.2, Python package,
+\url{https://pypi.org/project/tamil-lemmatizer/} (accessed on 11 October 2026).
+
+\bibitem{anandkumar2010}
+Anand Kumar M, Dhanalakshmi V, Soman K P and Rajendran S 2010 A sequence
+labeling approach to morphological analyzer for Tamil language. \emph{Int.
+J. Comput. Sci. Eng.} 2: 1944--1951. %VERIFY last page
+
+\bibitem{thangarasu2013}
+Thangarasu M and Manavalan R 2013 Stemmers for Tamil language: performance
+analysis. \emph{Int. J. Comput. Sci. Eng. Technol.} 4(7). arXiv:1310.0754.
+
+\bibitem{thamizhiudp}
+Sarveswaran K and Dias G 2020 ThamizhiUDp: A dependency parser for Tamil. In:
+\emph{Proceedings of the 17th International Conference on Natural Language
+Processing (ICON)}, pp. 200--207.
+
+\bibitem{paul2013}
+Paul S, Joshi N and Mathur I 2013 Development of a Hindi lemmatizer.
+arXiv:1305.6211.
+
+\bibitem{nivre2020}
+Nivre J, de Marneffe M-C, Ginter F, Hajič J, Manning C D, Pyysalo S
+\emph{et al.} 2020 Universal Dependencies v2: An evergrowing multilingual
+treebank collection. In: \emph{Proceedings of the 12th Language Resources and
+Evaluation Conference (LREC 2020)}, pp. 4034--4043.
+
+\bibitem{ttb}
+Ramasamy L and Žabokrtský Z 2012 Prague dependency style treebank for Tamil.
+In: \emph{Proceedings of the Eighth International Conference on Language
+Resources and Evaluation (LREC'12)}, pp. 1888--1894.
+
+\bibitem{mwtt}
+Krishnamurthy P and Sarveswaran K 2021 Towards building a modern written Tamil
+treebank. In: \emph{Proceedings of the 20th International Workshop on
+Treebanks and Linguistic Theories (TLT, SyntaxFest 2021)}, pp. 61--68.
+
+\bibitem{sarveswaran2024}
+Sarveswaran K 2024 Building Tamil treebanks. In: \emph{Proceedings of the 23rd
+Tamil Internet Conference (ICTCIT 2024)}, INFITT, pp. 22--32.
+
+\bibitem{aalamaram}
+Abirami A M, Leong W Q, Rengarajan H, Anitha D, Suganya R, Singh H \emph{et al.}
+2024 Aalamaram: A large-scale linguistically annotated treebank for the Tamil
+language. In: \emph{Proceedings of the 7th Workshop on Indian Language Data:
+Resources and Evaluation (WILDRE)}, pp. 73--83.
+
+\bibitem{morfette}
+Chrupała G, Dinu G and van Genabith J 2008 Learning morphology with Morfette.
+In: \emph{Proceedings of the Sixth International Conference on Language
+Resources and Evaluation (LREC'08)}. %VERIFY pages
+
+\bibitem{lemming}
+Müller T, Cotterell R, Fraser A and Schütze H 2015 Joint lemmatization and
+morphological tagging with Lemming. In: \emph{Proceedings of the 2015
+Conference on Empirical Methods in Natural Language Processing},
+pp. 2268--2274.
+
+\bibitem{lematus}
+Bergmanis T and Goldwater S 2018 Context sensitive neural lemmatization with
+Lematus. In: \emph{Proceedings of the 2018 Conference of the North American
+Chapter of the Association for Computational Linguistics: Human Language
+Technologies}, pp. 1391--1400. %VERIFY pages
+
+\bibitem{kanerva}
+Kanerva J, Ginter F and Salakoski T 2021 Universal Lemmatizer: A
+sequence-to-sequence model for lemmatizing Universal Dependencies treebanks.
+\emph{Nat. Lang. Eng.} https://doi.org/10.1017/S1351324920000224 %VERIFY volume and pages
+
+\bibitem{udpipe}
+Straka M 2018 UDPipe 2.0 prototype at CoNLL 2018 UD shared task. In:
+\emph{Proceedings of the CoNLL 2018 Shared Task: Multilingual Parsing from Raw
+Text to Universal Dependencies}, pp. 197--207.
+
+\bibitem{sigmorphon2019}
+McCarthy A D, Vylomova E, Wu S, Malaviya C, Wolf-Sonkin L, Nicolai G
+\emph{et al.} 2019 The SIGMORPHON 2019 shared task: Morphological analysis in
+context and cross-lingual transfer for inflection. In: \emph{Proceedings of
+the 16th Workshop on Computational Research in Phonetics, Phonology, and
+Morphology}, pp. 229--244. %VERIFY author order
+
+\bibitem{bahdanau}
+Bahdanau D, Cho K and Bengio Y 2015 Neural machine translation by jointly
+learning to align and translate. In: \emph{Proceedings of the 3rd
+International Conference on Learning Representations (ICLR)}.
+
+\bibitem{hochreiter}
+Hochreiter S and Schmidhuber J 1997 Long short-term memory. \emph{Neural
+Comput.} 9: 1735--1780.
+
+\bibitem{vaswani}
+Vaswani A, Shazeer N, Parmar N, Uszkoreit J, Jones L, Gomez A N \emph{et al.}
+2017 Attention is all you need. In: \emph{Advances in Neural Information
+Processing Systems 30}, pp. 5998--6008.
+
+\bibitem{hinton}
+Hinton G, Vinyals O and Dean J 2015 Distilling the knowledge in a neural
+network. arXiv:1503.02531.
+
+\bibitem{kimrush}
+Kim Y and Rush A M 2016 Sequence-level knowledge distillation. In:
+\emph{Proceedings of the 2016 Conference on Empirical Methods in Natural
+Language Processing}, pp. 1317--1327.
+
+\bibitem{jacob}
+Jacob B, Kligys S, Chen B, Zhu M, Tang M, Howard A \emph{et al.} 2018
+Quantization and training of neural networks for efficient
+integer-arithmetic-only inference. In: \emph{Proceedings of the IEEE
+Conference on Computer Vision and Pattern Recognition (CVPR)},
+pp. 2704--2713.
+
+\bibitem{treviso}
+Treviso M, Lee J-U, Ji T, van Aken B, Cao Q, Ciosici M R \emph{et al.} 2023
+Efficient methods for natural language processing: A survey. \emph{Trans.
+Assoc. Comput. Linguist.} 11: 826--860.
+
+\bibitem{onnxruntime}
+ONNX Runtime developers 2021 ONNX Runtime. Software.
+\url{https://onnxruntime.ai} (accessed on 11 October 2026).
+
+\bibitem{litert}
+Google AI Edge, LiteRT. Software. \url{https://ai.google.dev/edge/litert}
+(accessed on 11 October 2026).
+
+\bibitem{ncnn}
+Tencent, ncnn: a high-performance neural network inference framework for
+mobile platforms. Software. \url{https://github.com/Tencent/ncnn} (accessed on
+11 October 2026).
+
+\end{thebibliography}
+
+\end{document}

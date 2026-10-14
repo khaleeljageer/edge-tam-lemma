@@ -236,7 +236,19 @@ words not in UD TTB train, the only fair split for tools trained on TTB):
   ~40% on ONNX, 0% on ncnn). The edit classifier's single-pass output, not its
   CNN encoder, explains both its speed everywhere and its unseen-lemma accuracy.
 - Distilled 0.5M students (`lstm_kd_500k_s13`, `edit_kd_500k_s13`, best dev
-  seed) exported to ONNX / ncnn / LiteRT, agreement 100%; Pi bundle pending.
+  seed) exported to ONNX / ncnn / LiteRT, agreement 100% on desktop and Pi 5
+  (`bench/results/m3_distill/`). Pi 5, ms/word, best runtime:
+
+  | Model | test | b1, 1 thr | b1, 4 thr | RAM (ncnn) |
+  |---|---|---|---|---|
+  | LSTM 1M (scratch) | 71.5 | 5.29 ONNX | 5.64 ncnn | 41 MB |
+  | LSTM 0.5M (distilled) | 72.7 | 2.96 ONNX | 2.45 ONNX | 40 MB |
+  | edit 1M (scratch) | 67.5 | 2.18 LiteRT | 1.14 LiteRT | 41 MB |
+  | edit 0.5M (distilled) | 71.0 | 0.79 LiteRT | 0.49 LiteRT | 40 MB |
+
+  Distilled 0.5M students are more accurate and 1.8–2.8× faster than the 1M
+  scratch models; the distilled edit classifier is 4–5× faster than the
+  distilled LSTM at −1.7 test / +3.9 unseen.
 
 **M3 step 5 — data expansion (in progress).** `scripts/data/expand_candidates.py`:
 candidate lemmas for the top Wikipedia words from four sources (ThamizhiMorph,
@@ -252,14 +264,267 @@ Calibration on dev (`bench/results/m3_expansion/calibration_dev.csv`):
 | all | 100% | 76.8% (best single source 73.9%) |
 
 `import` turns reviewed rows into `data/expanded/train.tsv` (gold train +
-reviewed pairs), dropping dev/test lemmas. Needs a human reviewer.
+reviewed pairs), dropping dev/test lemmas.
+
+Review of `data/annotation/wiki_batch01_reviewed.tsv` (rows 1–1000 on
+2026-10-11, rows 1001–3000 on 2026-10-12): 2,830 accepted (413 corrected), 39
+rejected, 131 left blank; `import` kept 2,583 (247 dropped: dev/test lemma) →
+5,736 training pairs (+82% over the 3,153 gold). Retrained at 500k, seeds 13–15
+(`*_exp` configs; KD data rebuilt with `tel.distill --gold data/expanded/train.tsv`
+→ `data/distill/teacher_lstm_wiki20k_exp`, 5,736 gold + 8,777 teacher words).
+`bench/results/m3_expansion/accuracy.csv` (now the 3,000-row runs; the
+1,000-row column is from the earlier version of that file, commit 8cfcb71):
+
+| Model | dev | test | test unseen | test, rows 1–1000 only |
+|---|---|---|---|---|
+| LSTM | 71.3 ± 1.6 | 70.5 ± 1.1 | 65.9 ± 2.0 | |
+| LSTM + reviewed | 72.0 ± 0.3 | 70.9 ± 2.0 | 65.8 ± 1.6 | 71.3 ± 0.7 |
+| LSTM + KD | 72.3 ± 1.6 | 73.4 ± 1.0 | 69.8 ± 1.8 | |
+| LSTM + KD + reviewed | 73.3 ± 1.1 | 72.5 ± 2.8 | 68.5 ± 2.8 | 74.5 ± 2.3 |
+| Edit | 64.3 ± 0.2 | 64.8 ± 1.3 | 65.4 ± 1.5 | |
+| Edit + reviewed | 67.1 ± 1.4 | 66.8 ± 1.7 | 67.4 ± 1.7 | 65.6 ± 1.7 |
+| Edit + KD | 68.5 ± 0.6 | 70.9 ± 1.0 | 71.4 ± 1.2 | |
+| Edit + KD + reviewed | 69.5 ± 0.8 | 71.7 ± 0.9 | 72.1 ± 1.1 | 70.9 ± 1.2 |
+
+- The edit classifier gains: +2.8 dev / +2.0 test from scratch, +1.0 / +0.8
+  with KD; more reviewed pairs add edit scripts it could not express before.
+  The LSTM gains on dev (+0.7 / +1.0) but not on test, and LSTM + KD varies
+  more between seeds (test 69.5–75.0). Only the scratch-edit dev gain is clearly
+  above seed noise. The reviewed words are frequent Wikipedia forms, the test
+  words rarer treebank forms.
+- Their main value is the hybrid table (frequent forms, human labels over
+  silver). Rebuilt as `table_<N>_reviewed.tsv` (`build_tables.py --reviewed …
+  --tag reviewed`, `bench/results/m4_hybrid/coverage_reviewed.csv`). Test
+  accuracy on table hits is unchanged (86.1% at 1k) by construction: the review
+  batch excludes every train/dev/test word. On Wikipedia running text the
+  reviewed words cover 22.7% of tokens and the corrected labels 3.2% — about
+  +3 points of table accuracy there (no gold to measure it).
+- The review confirms the dev calibration: `suggested` kept for 98.7% of agree,
+  83.0% of majority, 51.6% of conflict rows (dev: 93.7 / 79.8 / 49.4). Agree rows
+  can be accepted with a quick skim. Reviewer guideline fix: the
+  treebank reduces most -ஆக adverbs to the noun (66 of 77; kept: அதிகமாக,
+  குறிப்பாக, வேகமாக, எதிராக ...); 13 reviewed rows in 1–1000 keep the -ஆக form.
+
+**M4 step 1 — hybrid lookup (2026-10-11).** `tel.hybrid` (table first, model
+on misses) and `scripts/hybrid/build_tables.py`: top-N Wikipedia forms, labels
+gold train > reviewed > silver (offline 4-source vote). Evaluated with
+`bench_runner --weighted --tables`: test/dev words repeated by UD corpus
+frequency (stand-in for `test_news`, which needs news-text rights).
+`bench/results/m4_hybrid/` (`coverage.csv`, `desktop.csv`, `desktop_dev.csv`).
+Token accuracy, distilled 0.5M students, desktop ONNX 1 thread, mean ms/token:
+
+| Table | Size | Test hit | edit test | edit dev | edit ms | LSTM test | LSTM dev | LSTM ms |
+|---|---|---|---|---|---|---|---|---|
+| none | – | – | 77.8 | 65.3 | 0.122 | 78.3 | 72.4 | 0.487 |
+| 1k | 45 KB | 38% | 79.7 | 71.2 | 0.077 | 79.7 | 74.0 | 0.314 |
+| 5k | 247 KB | 56% | 80.4 | 73.0 | 0.054 | 80.0 | 74.2 | 0.221 |
+| 10k | 512 KB | 64% | 81.0 | 73.6 | 0.045 | 81.3 | 74.5 | 0.183 |
+| 50k | 2.7 MB | 84% | 82.5 | 74.2 | 0.020 | 83.2 | 75.0 | 0.081 |
+
+- The table helps on both splits, most for the edit classifier (+3 test, +8
+  dev at 10k), and closes its gap to the LSTM; mean latency falls 2.7× at 10k.
+- Gains come from frequent words where the offline vote beats the student; the
+  table only ever runs the expensive labellers once, offline.
+- Memory: +0 MB (≤10k) to +9 MB (50k) RSS with ncnn; table file is the cost.
+- Pi 5 (`rpi5-hybrid.csv`, 120 rows, same accuracies as desktop): mean
+  ms/token, batch 1, best runtime per model:
+
+  | Table | edit (LiteRT 4 thr) | edit (ncnn 4 thr) | LSTM (ONNX 1 thr) |
+  |---|---|---|---|
+  | none | 0.488 | 0.828 | 2.96 |
+  | 10k | 0.183 | 0.302 | 1.10 |
+  | 50k | 0.078 | 0.130 | 0.48 |
+
+  Speed-up ≈ 1 / (1 − hit rate): the lookup itself costs ~2 µs on the Pi.
+- Fixed-batch runtimes (LiteRT; graphs for batch 1 and 64 only) get no
+  speed-up at batch 64: the misses of a 64-word batch are padded back to 64.
+  Fix: export intermediate batch sizes, or send small miss sets through the
+  batch-1 graph.
+
+**M4 step 2 — INT8 quantization (2026-10-11).** `tel.quantize` (fp32 export →
+`<export>-int8dyn` / `-int8`, fp32 PyTorch reference kept, so `agreement` is the
+quantization error). Host fix first: `chunk_sizes` no longer pads a small
+remainder up to the batch-64 graph (hybrid misses on LiteRT: edit 2.9× faster
+at b64). Desktop, 1 thread, batch 1 (`bench/results/m4_quant/desktop.csv`):
+
+| Model | Variant | Size | Test acc | Agreement | ms/word |
+|---|---|---|---|---|---|
+| edit | ONNX fp32 | 1,986 KB | 70.95 | 100% | 0.121 |
+| edit | ONNX int8 dynamic | 502 KB | 70.81 | 99.9% | 0.384 (slower) |
+| edit | ONNX int8 static (QDQ) | 544 KB | 70.81 | 99.4% | 0.081 |
+| edit | LiteRT fp32 | 1,962 KB | 70.95 | 100% | 0.111 |
+| edit | LiteRT int8 dynamic | 538 KB | 70.95 | 100% | 0.060 |
+| LSTM | ONNX fp32 | 2,063 KB | 72.69 | 100% | 0.484 |
+| LSTM | ONNX int8 dynamic | 511 KB | 72.83 | 98.6% | 0.320 |
+| LSTM | ONNX int8 static | 1,682 KB | 72.69 | 98.8% | 0.499 |
+| LSTM | LiteRT fp32 | 2,208 KB | 72.69 | 100% | 0.535 |
+| LSTM | LiteRT int8 dynamic | 796 KB | 72.69 | 100% | 0.223 |
+
+- INT8 costs ≤0.15 points everywhere; files shrink 2.8–4×.
+- Best: LiteRT dynamic int8 (edit 1.9×, LSTM 2.4× faster, 100% agreement).
+- ONNX dynamic int8 slows the edit classifier 3× (ORT's ConvInteger path);
+  static QDQ is the ONNX choice for the CNN. ONNX static leaves the LSTM op in
+  float (no size or speed gain); dynamic is the ONNX choice for the LSTM.
+- Not done: static (full-int8) LiteRT — the additive padding mask and float
+  graph inputs break it (see `tel.quantize`); ncnn int8 needs ncnn's C++ tools.
+
+Raspberry Pi 5 (`bench/results/m4_quant/rpi5.csv`, active cooling, throttled=0x0;
+fp32 rows reproduce the M3 distilled run within 2%). ms/word, batch 1 unless noted:
+
+| Model | Variant | 1 thr | 4 thr | Best (thr, batch) | Peak RSS |
+|---|---|---|---|---|---|
+| edit | ONNX fp32 | 1.042 | 0.622 | 0.446 (4, 64) | 85 MB |
+| edit | ONNX int8 dynamic | 0.621 | 0.446 | 0.433 (4, 64) | 84 MB |
+| edit | ONNX int8 static | 0.570 | 0.382 | 0.295 (4, 64) | 77 MB |
+| edit | LiteRT fp32 | 0.810 | 0.478 | 0.478 (4, 1) | 60 MB |
+| edit | LiteRT int8 dynamic | 0.337 | **0.288** | **0.288 (4, 1)** | 55 MB |
+| edit | ncnn fp32 | 1.668 | 0.817 | 0.786 (4, 64) | 40 MB |
+| LSTM | ONNX fp32 | 2.953 | 2.426 | 1.350 (4, 64) | 90 MB |
+| LSTM | ONNX int8 dynamic | 1.872 | 1.864 | 1.051 (1, 64) | 88 MB |
+| LSTM | ONNX int8 static | 2.907 | 2.409 | 1.295 (4, 64) | 90 MB |
+| LSTM | LiteRT fp32 | 3.800 | 4.717 | 1.061 (4, 64) | 136 MB |
+| LSTM | LiteRT int8 dynamic | 1.867 | 2.706 | **0.856 (4, 64)** | 96 MB |
+| LSTM | ncnn fp32 | 4.626 | 3.584 | 3.584 (4, 1) | 41 MB |
+
+- Accuracy and agreement match the desktop except LSTM LiteRT int8 dynamic:
+  72.54 / 99.9% agreement on the Pi vs 72.69 / 100% on x86 (ARM integer
+  kernels round differently). Loss stays ≤0.15 points. The LSTM ONNX dynamic
+  1- vs 4-thread difference (72.83 vs 72.69) reproduces on ARM.
+- LiteRT dynamic int8 is again the best: edit 2.4× (1 thr) / 1.7× (4 thr)
+  faster, 0.288 ms/word = 3,450 words/s, the fastest configuration measured so
+  far; LSTM 2.0× faster at batch 1 and 0.86 ms/word at 4 thr batch 64.
+- Unlike x86, ONNX dynamic int8 speeds the edit classifier up on the A76
+  (1.7×, integer dot-product kernels); static QDQ is still faster (1.8×,
+  0.295 ms at 4 thr b64). ONNX static again gives the LSTM nothing.
+- INT8 also cuts LiteRT memory (LSTM 136 → 96 MB). ncnn fp32 stays the lowest-RAM
+  option (40 MB) but the slowest.
+- Batch-1 LSTM on LiteRT is slower with 4 threads than 1 (per-step ops too
+  small to split); report the best thread count per runtime.
+
+**M4 step 3 — INT8 + hybrid on the Pi (2026-10-11).**
+`bench/results/m4_quant_hybrid/rpi5-hybrid.csv` (all 12 exports × no table / 1k /
+5k / 10k / 50k; 41.7 °C, throttled=0x0; fp32 batch-1 rows reproduce `m4_hybrid`
+within 3%, except LSTM ONNX Runtime at 4 threads, up to 22% faster this time:
+multi-thread LSTM timing on ORT is noisy, report its 1-thread numbers).
+Mean ms per token, batch 1, best thread count:
+
+| Table | Acc (edit / LSTM) | Edit LiteRT fp32 | Edit LiteRT int8 | LSTM ONNX fp32 | LSTM LiteRT int8 |
+|---|---|---|---|---|---|
+| none | 77.8 / 78.3 | 0.493 | 0.288 | 2.441 | 1.812 |
+| 10k (512 KB) | 81.0 / 81.3 | 0.182 | 0.104 | 1.099 | 0.670 |
+| 50k (2.7 MB) | 82.5 / 83.2 | 0.078 | **0.048** | 0.492 | 0.294 |
+
+- The two gains multiply: Edit + KD LiteRT int8 + 50k table = 0.048 ms/token
+  (≈21k tokens/s on one Pi 5), 10× faster than fp32 without a table and +4.7
+  points; 56 MB RSS. Fastest batched: ONNX static int8 + 50k, 0.040 ms (4 thr, b64).
+- int8 accuracy with a table equals fp32 to ≤0.3 points (table hits dominate).
+- The `chunk_sizes` fix works for the edit classifier on LiteRT b64 (0.500 →
+  0.066 ms at 50k) but hurt the LSTM on LiteRT b64 with 5k/10k tables
+  (1.11 → 1.80 ms): a batch-1 LSTM call is not much cheaper than a batch-64 one
+  (3.8 vs ~70 ms), so stepping down pays off only below ~18 misses, not 32.
+  **Fixed:** hosts now `calibrate()` (time one call per fixed-batch graph, done
+  by the bench worker before timing) and `chunk_sizes` picks the cheapest split
+  by dynamic programming; without calibration the old heuristic applies.
+  Desktop check (LiteRT, 1 thr, b64, ms/token; `bench/tmp`, not a result file):
+  LSTM none / 10k / 50k 0.199 / 0.197 / 0.089, edit 0.118 / 0.039 / 0.017 — no
+  table size is slower than no table any more.
+  Pi rerun of the LiteRT exports (`bench/results/m4_chunk_cost/rpi5-hybrid.csv`,
+  37.8 °C, throttled=0x0; accuracy identical, batch-1 within 3% of before).
+  Mean ms/token, 4 threads, batch 64, none / 1k / 5k / 10k / 50k:
+
+  | Export | Before (half-full rule) | After (calibrated) |
+  |---|---|---|
+  | LSTM fp32 | 1.106 / 1.123 / 1.804 / 1.674 / 0.741 | 1.117 / 1.121 / 1.095 / 1.071 / 0.704 |
+  | LSTM int8 | 0.914 / 0.920 / 1.068 / 0.928 / 0.433 | 0.914 / 0.926 / 0.935 / 0.890 / 0.428 |
+  | Edit fp32 | 0.500 / 0.493 / 0.235 / 0.163 / 0.066 | 0.409 / 0.492 / 0.181 / 0.154 / 0.066 |
+  | Edit int8 | 0.417 / 0.417 / 0.165 / 0.099 / 0.042 | 0.253 / 0.158 / 0.108 / 0.090 / 0.041 |
+
+  The LSTM slowdown is gone (5k: 1.80 → 1.10 ms). The edit classifier gains even
+  without a table (int8 0.417 → 0.253): its batch-64 graph is no cheaper per
+  word than batch 1, so the split now uses batch-1 calls. One miss: edit fp32
+  1k at 4 threads still pads (0.492; batch-1 calls would give ~0.30) — the
+  best-of-3 calibration timing is noisy with 4 threads on the Pi.
+
+**M5 step 1 — figure and table scripts (2026-10-11).** `paper/figures/`
+(`uv run python paper/figures/make_all.py`, matplotlib in the `paper` dependency
+group), output in `paper/figures/out/` (git-ignored, regenerated):
+
+- `fig_params.py` → `acc_vs_params`: test accuracy vs parameters, mean ± std over
+  seeds from `m3_sweep/accuracy.csv`, with and without KD, baseline reference lines.
+- `fig_pareto.py` → `pareto`: accuracy vs median batch-1 latency, best thread count
+  per (model, precision, runtime), Pareto front per device (Pi 5, desktop), from
+  the M2–M4 device CSVs (later runs override earlier ones). Front on the Pi:
+  Edit + KD LiteRT int8 (0.29 ms, 71.0) → LSTM + KD int8 (1.87 ms, 72.5–72.8).
+- `tables.py` → `tab_accuracy`, `tab_quant`, `tab_hybrid` (LaTeX, booktabs).
+
+**M5 step 2 — error analysis (2026-10-11).** `scripts/analysis/error_analysis.py`
+rebuilds each run's test predictions from `runs/<run>/test_errors.tsv` and
+categorizes every error with `tel.error_analysis` (Tamil-grapheme rules) →
+`bench/results/m5_errors/{errors,categories,examples}.csv`; `tables.py` renders
+`tab_errors.tex` and `tab_error_examples.tex` (15 examples, fixed seed; Tamil
+wrapped in `\ta{}`, needs XeLaTeX/LuaLaTeX). Errors on test (500k, seed 13):
+
+| Category | Teacher | LSTM | LSTM+KD | Edit | Edit+KD |
+|---|---|---|---|---|---|
+| Form left unchanged | 57 | 61 | 51 | 89 | 62 |
+| Gold keeps the form | 46 | 42 | 42 | 39 | 36 |
+| Suffix partly left | 23 | 30 | 19 | 36 | 25 |
+| Too much removed | 11 | 5 | 8 | 14 | 13 |
+| Stem-final letter wrong | 26 | 34 | 36 | 50 | 42 |
+| Other / wrong stem | 25 | 29 | 33 | 26 | 23 |
+| Total | 188 | 201 | 189 | 254 | 201 |
+
+- KD helps the edit classifier mostly by no longer copying the form (89 → 62)
+  and restoring stem-final letters (50 → 42).
+- 69 of Edit+KD's 201 errors need an edit script outside its vocabulary (a hard
+  ceiling: script coverage 90% on test); the LSTM has no such limit.
+- "Gold keeps the form" (~40 per model) is mostly a treebank convention for
+  adverbs, postpositions, numerals and participles (அத்துடன், முப்பது); 86 test
+  pairs are wrong in all five models — candidates for annotation noise
+  (e.g. பங்கேற்க → gold பங்கேல்).
+- The automatic categories still need a manual pass on the 15 examples before
+  the paper.
+
+**M5 step 3 — manuscript (2026-10-14).** Target: Sādhanā (Indian Academy of
+Sciences / Springer, Scopus + WoS, regular paper ≤ 20 pages, numbered references
+in citation order, ≤ 6 keywords, 300 dpi figures, AI-use disclosure required);
+TALLIP if it is not accepted. `paper/main.tex` uses the journal's class
+(`paper/sadhana.cls`, downloaded 2026-10-14) with XeLaTeX (TeX Gyre Termes +
+Noto Serif Tamil) and `\input`s the generated tables and figures from
+`paper/figures/out/`. Tables have captions above; wide ones are `table*`
+(`latex_table(..., wide=True)`). New tables: `tab_sweep` (all sizes),
+`tab_ablation` (1M encoder ablation, accuracy from
+`bench/results/m3_ablation/accuracy.csv`, written by `tel.sweep --csv`, plus Pi
+latency) and `tab_expansion`. Figures are also written as 300 dpi PNG/TIFF.
+`paper/order_refs.py` keeps the `\bibitem`s in citation order (tested).
+References checked online; `%VERIFY` marks three entries still to confirm.
+Open (`\todo{}`): speaker-number source, more Tamil/Dravidian related work,
+second annotator, manual check of the error examples, repository URL, code
+licence, funding, AI-use statement. Not compiled yet (no TeX on the dev
+machine). Test clean for the distilled students (seed 13) added to
+`accuracy_baselines.csv` (`collect_runs.py`): LSTM+KD 72.9, Edit+KD 70.8,
+teacher 69.3. `docs/reproduce.md` lists the commands behind every result.
+Compiled 2026-10-14 (XeLaTeX): 9 pages, no overfull boxes (tables are scaled to
+the column with `adjustbox`). Second annotator (a Tamil professor, Dr. Revathi):
+`scripts/data/agreement.py sample` wrote a blind, status-stratified 200-word
+sheet and the 15 error examples to `data/annotation/agreement/` (instructions in
+its README, rules in `docs/annotation_guidelines.md`); `score` writes
+`bench/results/m3_expansion/agreement.csv`. Code licence: GPL-3.0 (`LICENSE`).
+
+**Devices (2026-10-13).** Final device set: Raspberry Pi 5 (ARM edge) and the
+desktop (x86 reference); Android phone and Qualcomm board dropped (research plan
+§8.1). The only phone at hand, a Galaxy A13, runs 32-bit Android (armeabi-v7a
+only), for which the onnxruntime / LiteRT / ncnn Python packages have no builds
+(details in `bench/devices.md`). Limitations paragraph for the paper: the Pi 5's
+Cortex-A76 cores are common in mid-range phones, but Android runtime builds were
+not measured; low-end phones still ship 32-bit Android, which needs native
+runtime builds rather than the Python packages used here.
 
 ## E. Risks
 
 - ~~LSTM operator support in ExecuTorch / LiteRT / ncnn~~ — resolved at M2:
   both models export to ONNX, ExecuTorch (XNNPACK), LiteRT and ncnn with 100%
-  dev agreement (ncnn also tested with a 2-layer LSTM). Still to confirm on
-  ARM devices.
+  dev agreement (ncnn also tested with a 2-layer LSTM); confirmed on the Pi 5.
 - ~~LiteRT batch-64 LSTM encoder 6.7 MB~~ — caused by the gather-based
   reversal; the permutation-matmul version is 1.5 MB.
 - Reduced-precision runtimes can fail silently on a device while the desktop

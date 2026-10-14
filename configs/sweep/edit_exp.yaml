@@ -1,0 +1,20 @@
+# M3 step 5 data expansion: edit.yaml trained on gold train + 2,583 human-reviewed
+# Wikipedia words (data/annotation/wiki_batch01_reviewed.tsv, rows 1-3000). Compare with edit_<size>.
+name: edit_exp
+model:
+  type: edit_classifier
+  emb: 64
+  layers: 3
+  kernel: 3
+  dropout: 0.2
+data:
+  tokenizer: codepoint
+  max_len: 48
+  train_file: data/expanded/train.tsv
+train:
+  epochs: 80
+  batch_size: 32
+  lr: 0.002
+  patience: 12
+edit:
+  top_k: null
